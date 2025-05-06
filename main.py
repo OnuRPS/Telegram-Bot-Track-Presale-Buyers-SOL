@@ -1,5 +1,5 @@
 from solana.rpc.async_api import AsyncClient
-from solana.publickey import PublicKey
+from solders.pubkey import Pubkey
 import asyncio, os, aiohttp
 from telegram import Bot
 
