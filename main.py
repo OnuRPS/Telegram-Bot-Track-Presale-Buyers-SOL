@@ -57,7 +57,6 @@ async def check_transactions():
             first_time = last_sig is None
 
             if sig != last_sig or first_time:
-                last_sig = sig
                 tx_resp = await client.get_transaction(sig, encoding="jsonParsed", max_supported_transaction_version=0)
                 if not tx_resp.value:
                     await asyncio.sleep(10)
@@ -105,11 +104,6 @@ async def check_transactions():
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
 
-                    # 3️⃣ Fallback: RAW base64 SYSTEM transfer
-                    elif not parsed_data and instr.get("program") == "system" and "data" in instr:
-                        print(f"⚠️ RAW SYSTEM instruction at index {i}, can't parse directly")
-                        continue
-
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
                         usd_value = sol_amount * sol_price
@@ -136,6 +130,7 @@ async def check_transactions():
                             else:
                                 await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
                             print(f"✅ TX posted: {sig}")
+                            last_sig = sig  # 👈 setăm doar după trimitere cu succes
                         except Exception as e:
                             print(f"❌ Failed to send Telegram message: {e}")
 
