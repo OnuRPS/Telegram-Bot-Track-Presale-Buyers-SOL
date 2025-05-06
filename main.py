@@ -51,31 +51,32 @@ async def check_transactions():
                 parsed = tx_resp.value.to_json()
 
                 for instr in parsed["transaction"]["message"]["instructions"]:
-                    # Skip if parsed is missing or not a dict
-                    if not isinstance(instr.get("parsed"), dict):
-                        continue
+                    parsed_data = instr.get("parsed")
+                    if not isinstance(parsed_data, dict):
+                        continue  # Skip if parsed is missing or invalid
 
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
 
                     # Native SOL transfer
-                    if instr["program"] == "system" and instr["parsed"]["type"] == "transfer":
-                        lamports = int(instr["parsed"]["info"]["lamports"])
+                    if instr["program"] == "system" and parsed_data.get("type") == "transfer":
+                        info = parsed_data.get("info", {})
+                        lamports = int(info.get("lamports", 0))
                         sol_amount = lamports / 1e9
-                        from_addr = instr["parsed"]["info"]["source"]
-                        to_addr = instr["parsed"]["info"]["destination"]
+                        from_addr = info.get("source", "")
+                        to_addr = info.get("destination", "")
 
                     # WSOL SPL transfer
-                    elif instr["program"] == "spl-token" and instr["parsed"]["type"] == "transfer":
-                        token_dest = instr["parsed"]["info"]["destination"]
-                        token_mint = instr["parsed"]["info"].get("mint", "")
+                    elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
+                        info = parsed_data.get("info", {})
+                        token_dest = info.get("destination", "")
+                        token_mint = info.get("mint", "")
                         if token_dest == MONITORED_WALLET and token_mint == WSOL_MINT:
-                            sol_amount = int(instr["parsed"]["info"]["amount"]) / 1e9
-                            from_addr = instr["parsed"]["info"]["source"]
+                            sol_amount = int(info.get("amount", 0)) / 1e9
+                            from_addr = info.get("source", "")
                             to_addr = token_dest
 
-                    # Dacă s-a detectat o sumă validă
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
                         usd_value = sol_amount * sol_price
