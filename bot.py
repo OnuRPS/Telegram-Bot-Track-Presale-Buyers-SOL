@@ -69,12 +69,11 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
-                # Accesăm întregul JSON, nu doar tranzacția
                 tx_json = json.loads(tx_resp.value.to_json())
-
                 transaction = tx_json.get("transaction", {})
                 msg = transaction.get("message", {})
                 instructions = msg.get("instructions", [])
+                inner = tx_json.get("meta", {}).get("innerInstructions", [])
                 accs = msg.get("accountKeys", [])
                 meta = tx_json.get("meta", {})
 
@@ -85,14 +84,24 @@ async def check_transactions():
                 from_addr = "Unknown"
                 to_addr = MONITORED_WALLET
 
-                # 1️⃣ WSOL via postTokenBalances
-                for b in meta.get("postTokenBalances", []):
-                    if b.get("owner") == MONITORED_WALLET and b.get("mint") == WSOL_MINT:
-                        sol_amount = float(b.get("uiTokenAmount", {}).get("uiAmount", 0))
-                        print(f"✅ WSOL detected: {sol_amount} SOL")
+                # 1️⃣ WSOL transfer inclusiv din innerInstructions
+                for instr_list in [instructions] + [x.get("instructions", []) for x in inner if isinstance(x, dict)]:
+                    for instr in instr_list:
+                        if instr.get("program") == "spl-token":
+                            parsed = instr.get("parsed", {})
+                            if parsed.get("type") == "transfer":
+                                info = parsed.get("info", {})
+                                if info.get("mint") == WSOL_MINT and info.get("destination") == MONITORED_WALLET:
+                                    amount = int(info.get("amount", 0))
+                                    sol_amount = amount / 1e9
+                                    from_addr = info.get("source", "Unknown")
+                                    to_addr = info.get("destination", MONITORED_WALLET)
+                                    print(f"✅ WSOL transfer detected: {sol_amount} SOL")
+                                    break
+                    if sol_amount > 0:
                         break
 
-                # 2️⃣ SOL direct via parsed instructions
+                # 2️⃣ SOL direct
                 if sol_amount == 0:
                     for instr in instructions:
                         if instr.get("program") == "system":
@@ -104,27 +113,21 @@ async def check_transactions():
                                     sol_amount = lamports / 1e9
                                     from_addr = info.get("source", "Unknown")
                                     to_addr = info.get("destination", MONITORED_WALLET)
-                                    print(f"✅ SOL detected: {sol_amount} SOL")
+                                    print(f"✅ SOL transfer detected: {sol_amount} SOL")
                                     break
 
-                # 3️⃣ Fallback: balance delta
-                if sol_amount == 0 and meta.get("preBalances") and meta.get("postBalances"):
-                    try:
-                        pre = meta["preBalances"]
-                        post = meta["postBalances"]
-                        for i, acc in enumerate(accs):
-                            if isinstance(acc, dict):
-                                pubkey = acc.get("pubkey")
-                            else:
-                                pubkey = acc
-                            if pubkey == MONITORED_WALLET:
-                                diff = int(post[i]) - int(pre[i])
-                                if diff > 0:
-                                    sol_amount = diff / 1e9
-                                    print(f"⚠️ Fallback balance delta: {sol_amount} SOL")
-                                    break
-                    except Exception as e:
-                        print(f"❌ Fallback balance check error: {e}")
+                # 3️⃣ WSOL via postTokenBalances (delta check)
+                if sol_amount == 0:
+                    for b in meta.get("postTokenBalances", []):
+                        if b.get("owner") == MONITORED_WALLET and b.get("mint") == WSOL_MINT:
+                            pre_amt = next((x for x in meta.get("preTokenBalances", []) if x.get("accountIndex") == b.get("accountIndex")), {})
+                            old_val = float(pre_amt.get("uiTokenAmount", {}).get("uiAmount", 0))
+                            new_val = float(b.get("uiTokenAmount", {}).get("uiAmount", 0))
+                            diff = new_val - old_val
+                            if diff > 0:
+                                sol_amount = diff
+                                print(f"✅ WSOL delta detected: {sol_amount} SOL")
+                                break
 
                 if sol_amount > 0:
                     sol_price = await get_sol_price()
@@ -135,7 +138,7 @@ async def check_transactions():
                         f"🪙 *New $BabyGOV contribution detected!*\n\n"
                         f"🔁 From: `{from_addr}`\n"
                         f"📥 To: `{to_addr}`\n"
-                        f"🟨 *Amount Raised:*\n"
+                        f"🟨 *Amount:*\n"
                         f"┌────────────────────────────┐\n"
                         f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
                         f"└────────────────────────────┘\n"
