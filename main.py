@@ -49,23 +49,23 @@ async def check_transactions():
                     continue
 
                 parsed = tx_resp.value.to_json()
+                instructions = parsed.get("transaction", {}).get("message", {}).get("instructions", [])
 
-                for i, instr in enumerate(parsed["transaction"]["message"]["instructions"]):
+                for i, instr in enumerate(instructions):
+                    if not isinstance(instr, dict):
+                        print(f"⚠️ Ignored non-dict instruction at index {i}")
+                        continue
+
                     try:
-                        if not isinstance(instr, dict):
-                            print(f"⚠️ Skipping non-dict instruction at index {i}")
-                            continue
-
                         parsed_data = instr.get("parsed")
                         if not isinstance(parsed_data, dict):
-                            print(f"⚠️ Skipping instruction with non-dict parsed field at index {i}")
+                            print(f"⚠️ Skipping unparsed instruction at index {i}")
                             continue
 
                         sol_amount = 0
                         from_addr = ""
                         to_addr = ""
 
-                        # Native SOL transfer
                         if instr["program"] == "system" and parsed_data.get("type") == "transfer":
                             info = parsed_data.get("info", {})
                             lamports = int(info.get("lamports", 0))
@@ -73,7 +73,6 @@ async def check_transactions():
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
 
-                        # WSOL SPL transfer
                         elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
                             info = parsed_data.get("info", {})
                             token_dest = info.get("destination", "")
@@ -111,7 +110,7 @@ async def check_transactions():
                             print(f"✅ TX posted: {sig}")
 
                     except Exception as inner_e:
-                        print(f"⚠️ Skipped broken instruction: {inner_e}")
+                        print(f"⚠️ Error inside instruction at index {i}: {inner_e}")
 
         except Exception as e:
             print(f"⚠️ Error: {e}")
