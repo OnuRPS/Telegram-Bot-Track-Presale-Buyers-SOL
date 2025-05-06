@@ -64,8 +64,10 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
+                # ✅ Safe parsing for to_json() return type
                 try:
-                    parsed = tx_resp.value.to_json()
+                    raw = tx_resp.value.to_json()
+                    parsed = json.loads(raw) if isinstance(raw, str) else raw
                 except Exception as e:
                     print(f"⚠️ Failed to convert transaction to JSON: {e}")
                     await asyncio.sleep(10)
