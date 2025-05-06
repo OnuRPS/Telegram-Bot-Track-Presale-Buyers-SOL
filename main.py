@@ -1,12 +1,17 @@
-import os, asyncio, aiohttp
+import os, asyncio, aiohttp, json
 from telegram import Bot
+from solana.rpc.async_api import AsyncClient
+from solders.pubkey import Pubkey
 
+SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
-MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"
 
 bot = Bot(token=TELEGRAM_TOKEN)
+last_sig = None
+WSOL_MINT = "So11111111111111111111111111111111111111112"
 
 async def get_sol_price():
     try:
@@ -25,65 +30,129 @@ def generate_bullets(sol_amount):
 async def test_telegram_message():
     try:
         print("🧪 Sending test message to Telegram...")
-        test_text = "✅ *Bot started in SIMULATION MODE*\n\n🟢 Solana BuyDetector™ is faking transactions.\n🚨 No real wallet is being watched."
+        test_text = "✅ *Bot started and connected successfully!*\n\n🟢 Solana BuyDetector™ is live.\n🔍  Let`s ROCK these BabyGOV!!"
         if GIF_URL:
             await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text, parse_mode="Markdown")
         else:
             await bot.send_message(chat_id=CHAT_ID, text=test_text, parse_mode="Markdown")
         print("✅ Test message sent to Telegram!")
     except Exception as e:
-        print(f"❌ Failed to send Telegram message: {e}")
+        print(f"❌ Failed to send test Telegram message: {e}")
 
 async def check_transactions():
-    print("🧪 Simulated Solana BuyDetector™ running...")
-
-    fake_sigs = [
-        "simulatedsig001",
-        "simulatedsig002",
-        "simulatedsig003"
-    ]
-    index = 0
+    global last_sig
+    client = AsyncClient(SOLANA_RPC)
+    pubkey = Pubkey.from_string(MONITORED_WALLET)
+    print("🟢 Solana BuyDetector™ activated.")
 
     while True:
         try:
-            sig = fake_sigs[index % len(fake_sigs)]
-            index += 1
+            sigs_resp = await client.get_signatures_for_address(pubkey, limit=1)
+            sig_info = sigs_resp.value[0]
+            sig = sig_info.signature
 
-            from_addr = f"SimulatedFrom{index:03d}xxxxxxxxxxxxxxxxxxxx"
-            to_addr = MONITORED_WALLET
-            sol_amount = round(0.5 + index * 0.37, 4)
+            if sig != last_sig:
+                last_sig = sig
+                tx_resp = await client.get_transaction(sig, encoding="jsonParsed", max_supported_transaction_version=0)
 
-            sol_price = await get_sol_price()
-            usd_value = sol_amount * sol_price
-            bullets = generate_bullets(sol_amount)
+                if not tx_resp.value:
+                    print(f"⚠️ Transaction data missing for {sig}")
+                    await asyncio.sleep(10)
+                    continue
 
-            msg_text = (
-                f"🪙 *Simulated $BabyGOV contribution detected!*\n\n"
-                f"🔁 From: `{from_addr}`\n"
-                f"📥 To: `{to_addr}`\n"
-                f"🟨 *Amount:*\n"
-                f"┌────────────────────────────┐\n"
-                f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
-                f"└────────────────────────────┘\n"
-                f"{bullets}\n\n"
-                f"🔗 [Simulated TX](https://solscan.io/tx/{sig})\n\n"
-                f"───────────────\n"
-                f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Simulated\n"
-                f"🔧 by ReactLAB"
-            )
+                val = tx_resp.value
 
-            if GIF_URL:
-                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
-            else:
-                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                try:
+                    if hasattr(val, "to_json"):
+                        parsed = val.to_json()
+                    elif isinstance(val, dict):
+                        parsed = val
+                    elif isinstance(val, str):
+                        parsed = json.loads(val)
+                    else:
+                        print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
+                        await asyncio.sleep(10)
+                        continue
+                except Exception as e:
+                    print(f"⚠️ Failed to parse transaction: {e}")
+                    await asyncio.sleep(10)
+                    continue
 
-            print(f"✅ Simulated TX posted: {sig}")
+                tx = parsed.get("transaction")
+                if not isinstance(tx, dict):
+                    print(f"⚠️ Skipping malformed transaction (not dict): {type(tx)}")
+                    await asyncio.sleep(10)
+                    continue
+
+                msg = tx.get("message", {})
+                instructions = msg.get("instructions", [])
+
+                for i, instr in enumerate(instructions):
+                    if not isinstance(instr, dict):
+                        print(f"⚠️ Ignored non-dict instruction at index {i}")
+                        continue
+
+                    try:
+                        parsed_data = instr.get("parsed")
+                        if not isinstance(parsed_data, dict):
+                            print(f"⚠️ Skipping unparsed instruction at index {i}")
+                            continue
+
+                        sol_amount = 0
+                        from_addr = ""
+                        to_addr = ""
+
+                        if instr["program"] == "system" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            lamports = int(info.get("lamports", 0))
+                            sol_amount = lamports / 1e9
+                            from_addr = info.get("source", "")
+                            to_addr = info.get("destination", "")
+
+                        elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            token_dest = info.get("destination", "")
+                            token_mint = info.get("mint", "")
+                            if token_dest == MONITORED_WALLET and token_mint == WSOL_MINT:
+                                sol_amount = int(info.get("amount", 0)) / 1e9
+                                from_addr = info.get("source", "")
+                                to_addr = token_dest
+
+                        if sol_amount > 0:
+                            sol_price = await get_sol_price()
+                            usd_value = sol_amount * sol_price
+                            bullets = generate_bullets(sol_amount)
+
+                            msg_text = (
+                                f"🪙 *New $BabyGOV contribution detected!*\n\n"
+                                f"🔁 From: `{from_addr}`\n"
+                                f"📥 To: `{to_addr}`\n"
+                                f"🟨 *Amount:*\n"
+                                f"┌────────────────────────────┐\n"
+                                f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
+                                f"└────────────────────────────┘\n"
+                                f"{bullets}\n\n"
+                                f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
+                                f"───────────────\n"
+                                f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
+                                f"🔧 by ReactLAB"
+                            )
+
+                            if GIF_URL:
+                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
+                            else:
+                                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+
+                            print(f"✅ TX posted: {sig}")
+
+                    except Exception as inner_e:
+                        print(f"⚠️ Error inside instruction at index {i}: {inner_e}")
 
         except Exception as e:
-            print(f"⚠️ Simulated TX error: {e}")
+            print(f"⚠️ Outer error: {e}")
 
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(test_telegram_message())
-    asyncio.run(check_transactions())
+    asyncio.run(test_telegram_message())  # trimite mesaj test la pornire
+    asyncio.run(check_transactions())     # începe monitorizarea
