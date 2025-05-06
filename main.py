@@ -5,7 +5,7 @@ from solders.pubkey import Pubkey
 
 # === CONFIG ===
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "D6FDaJjvRwBSm54rBP7ViRbF7KQxzpNw35TFWNWwpsbB"  # Adresa de la presale
+MONITORED_WALLET = "D6FDaJjvRwBSm54rBP7ViRbF7KQxzpNw35TFWNWwpsbB"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
@@ -25,21 +25,20 @@ async def get_sol_price():
 
 def generate_bullets(sol_amount):
     bullets_count = int(sol_amount / 0.1)
-    bullets_count = min(bullets_count, 100)
-    return '🥇' * bullets_count
+    return '🥇' * min(bullets_count, 100)
 
 async def test_telegram_message():
+    print("🧪 Sending test message to Telegram...")
+    text = (
+        "✅ Bot started and connected successfully!\n\n"
+        "🟢 Solana BuyDetector™ is live.\n"
+        "🔍 Waiting for first transaction..."
+    )
     try:
-        print("🧪 Sending test message to Telegram...")
-        text = (
-            "✅ Bot started and connected successfully!\n\n"
-            "🟢 Solana BuyDetector™ is live.\n"
-            "🔍 Waiting for first transaction..."
-        )
         if GIF_URL:
-            bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=text)
+            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=text, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id=CHAT_ID, text=text)
+            await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
         print("✅ Test message sent to Telegram!")
     except Exception as e:
         print(f"❌ Failed to send test Telegram message: {e}")
@@ -66,7 +65,8 @@ async def check_transactions():
                 try:
                     raw = tx_resp.value.to_json()
                     parsed = json.loads(raw) if isinstance(raw, str) else raw
-                except:
+                except Exception as e:
+                    print(f"⚠️ Failed to convert transaction to JSON: {e}")
                     await asyncio.sleep(10)
                     continue
 
@@ -74,19 +74,20 @@ async def check_transactions():
                 msg = tx.get("message", {})
                 instructions = msg.get("instructions", [])
 
-                for instr in instructions:
+                for i, instr in enumerate(instructions):
                     if not isinstance(instr, dict):
+                        print(f"⚠️ Ignored non-dict instruction at index {i}")
                         continue
 
                     parsed_data = instr.get("parsed")
                     if not isinstance(parsed_data, dict):
+                        print(f"⚠️ Skipping unparsed instruction at index {i}")
                         continue
 
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
 
-                    # Native SOL
                     if instr["program"] == "system" and parsed_data.get("type") == "transfer":
                         info = parsed_data.get("info", {})
                         lamports = int(info.get("lamports", 0))
@@ -94,7 +95,6 @@ async def check_transactions():
                         from_addr = info.get("source", "")
                         to_addr = info.get("destination", "")
 
-                    # WSOL SPL token
                     elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
                         info = parsed_data.get("info", {})
                         if (
@@ -124,14 +124,14 @@ async def check_transactions():
                             f"{bullets}\n\n"
                             f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
                             f"───────────────\n"
-                            f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
+                            f"🤖 𝒓𝒾𝒿𝓀𝒳𝓂𝓁𝓆𝓈𝓃™ Solana\n"
                             f"🔧 by ReactLAB"
                         )
 
                         if GIF_URL:
-                            bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
+                            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
                         else:
-                            bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                            await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
 
                         print(f"✅ TX posted: {sig}")
 
