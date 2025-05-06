@@ -54,8 +54,9 @@ async def check_transactions():
             sigs_resp = await client.get_signatures_for_address(pubkey, limit=1)
             sig_info = sigs_resp.value[0]
             sig = sig_info.signature
+            first_time = last_sig is None
 
-            if sig != last_sig:
+            if sig != last_sig or first_time:
                 last_sig = sig
                 tx_resp = await client.get_transaction(sig, encoding="jsonParsed", max_supported_transaction_version=0)
                 if not tx_resp.value:
@@ -107,7 +108,7 @@ async def check_transactions():
                     # 3️⃣ Fallback: RAW base64 SYSTEM transfer
                     elif not parsed_data and instr.get("program") == "system" and "data" in instr:
                         print(f"⚠️ RAW SYSTEM instruction at index {i}, can't parse directly")
-                        continue  # Requires binary decoding to extract lamports
+                        continue
 
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
