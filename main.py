@@ -27,7 +27,7 @@ def generate_bullets(sol_amount):
     bullets_count = int(sol_amount / 0.1)
     return '🥇' * min(bullets_count, 100)
 
-async def test_telegram_message():
+def test_telegram_message():
     print("🧪 Sending test message to Telegram...")
     text = (
         "✅ Bot started and connected successfully!\n\n"
@@ -36,9 +36,9 @@ async def test_telegram_message():
     )
     try:
         if GIF_URL:
-            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=text, parse_mode="Markdown")
+            bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=text, parse_mode="Markdown")
         else:
-            await bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+            bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
         print("✅ Test message sent to Telegram!")
     except Exception as e:
         print(f"❌ Failed to send test Telegram message: {e}")
@@ -126,9 +126,9 @@ async def check_transactions():
 
                         try:
                             if GIF_URL:
-                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
+                                bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
                             else:
-                                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                                bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
                             print(f"✅ TX posted: {sig}")
                             last_sig = sig  # 👈 setăm doar după trimitere cu succes
                         except Exception as e:
@@ -140,5 +140,5 @@ async def check_transactions():
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(test_telegram_message())
+    test_telegram_message()
     asyncio.run(check_transactions())
