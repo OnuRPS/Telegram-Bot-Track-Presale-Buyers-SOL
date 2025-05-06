@@ -50,62 +50,68 @@ async def check_transactions():
 
                 parsed = tx_resp.value.to_json()
 
-                for instr in parsed["transaction"]["message"]["instructions"]:
-                    if not isinstance(instr, dict):
-                        continue  # Skip dacă instrucțiunea e string
+                for i, instr in enumerate(parsed["transaction"]["message"]["instructions"]):
+                    try:
+                        if not isinstance(instr, dict):
+                            print(f"⚠️ Skipping non-dict instruction at index {i}")
+                            continue
 
-                    parsed_data = instr.get("parsed")
-                    if not isinstance(parsed_data, dict):
-                        continue  # Skip dacă parsed nu e dict
+                        parsed_data = instr.get("parsed")
+                        if not isinstance(parsed_data, dict):
+                            print(f"⚠️ Skipping instruction with non-dict parsed field at index {i}")
+                            continue
 
-                    sol_amount = 0
-                    from_addr = ""
-                    to_addr = ""
+                        sol_amount = 0
+                        from_addr = ""
+                        to_addr = ""
 
-                    # Native SOL transfer
-                    if instr["program"] == "system" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        lamports = int(info.get("lamports", 0))
-                        sol_amount = lamports / 1e9
-                        from_addr = info.get("source", "")
-                        to_addr = info.get("destination", "")
-
-                    # WSOL SPL transfer
-                    elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        token_dest = info.get("destination", "")
-                        token_mint = info.get("mint", "")
-                        if token_dest == MONITORED_WALLET and token_mint == WSOL_MINT:
-                            sol_amount = int(info.get("amount", 0)) / 1e9
+                        # Native SOL transfer
+                        if instr["program"] == "system" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            lamports = int(info.get("lamports", 0))
+                            sol_amount = lamports / 1e9
                             from_addr = info.get("source", "")
-                            to_addr = token_dest
+                            to_addr = info.get("destination", "")
 
-                    if sol_amount > 0:
-                        sol_price = await get_sol_price()
-                        usd_value = sol_amount * sol_price
-                        bullets = generate_bullets(sol_amount)
+                        # WSOL SPL transfer
+                        elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            token_dest = info.get("destination", "")
+                            token_mint = info.get("mint", "")
+                            if token_dest == MONITORED_WALLET and token_mint == WSOL_MINT:
+                                sol_amount = int(info.get("amount", 0)) / 1e9
+                                from_addr = info.get("source", "")
+                                to_addr = token_dest
 
-                        msg = (
-                            f"🪙 *New $BabyGOV contribution detected!*\n\n"
-                            f"🔁 From: `{from_addr}`\n"
-                            f"📥 To: `{to_addr}`\n"
-                            f"🟨 *Amount:*\n"
-                            f"┌────────────────────────────┐\n"
-                            f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
-                            f"└────────────────────────────┘\n"
-                            f"{bullets}\n\n"
-                            f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
-                            f"───────────────\n"
-                            f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
-                            f"🔧 by ReactLAB"
-                        )
+                        if sol_amount > 0:
+                            sol_price = await get_sol_price()
+                            usd_value = sol_amount * sol_price
+                            bullets = generate_bullets(sol_amount)
 
-                        if GIF_URL:
-                            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg, parse_mode="Markdown")
-                        else:
-                            await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+                            msg = (
+                                f"🪙 *New $BabyGOV contribution detected!*\n\n"
+                                f"🔁 From: `{from_addr}`\n"
+                                f"📥 To: `{to_addr}`\n"
+                                f"🟨 *Amount:*\n"
+                                f"┌────────────────────────────┐\n"
+                                f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
+                                f"└────────────────────────────┘\n"
+                                f"{bullets}\n\n"
+                                f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
+                                f"───────────────\n"
+                                f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
+                                f"🔧 by ReactLAB"
+                            )
 
-                        print(f"✅ TX posted: {sig}")
+                            if GIF_URL:
+                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg, parse_mode="Markdown")
+                            else:
+                                await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+
+                            print(f"✅ TX posted: {sig}")
+
+                    except Exception as inner_e:
+                        print(f"⚠️ Skipped broken instruction: {inner_e}")
 
         except Exception as e:
             print(f"⚠️ Error: {e}")
