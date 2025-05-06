@@ -8,10 +8,10 @@ MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
+DEBUG = True  # 🔧 activează debug logging
 
 bot = Bot(token=TELEGRAM_TOKEN)
 last_sig = None
-WSOL_MINT = "So11111111111111111111111111111111111111112"
 
 async def get_sol_price():
     try:
@@ -64,7 +64,6 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
-                # ✅ Safe parsing for to_json() return type
                 try:
                     raw = tx_resp.value.to_json()
                     parsed = json.loads(raw) if isinstance(raw, str) else raw
@@ -84,16 +83,19 @@ async def check_transactions():
 
                 for i, instr in enumerate(instructions):
                     if not isinstance(instr, dict):
-                        print(f"⚠️ Ignored non-dict instruction at index {i}")
+                        if DEBUG:
+                            print(f"⚠️ Ignored non-dict instruction at index {i}")
                         continue
 
                     try:
                         parsed_data = instr.get("parsed")
                         if not isinstance(parsed_data, dict):
-                            print(f"⚠️ Skipping unparsed instruction at index {i}")
+                            if DEBUG:
+                                print(f"⚠️ Skipping unparsed instruction at index {i}")
                             continue
 
                         sol_amount = 0
+                        token_type = "SOL"
                         from_addr = ""
                         to_addr = ""
 
@@ -103,33 +105,42 @@ async def check_transactions():
                             sol_amount = lamports / 1e9
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
+                            token_type = "SOL"
 
                         elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
                             info = parsed_data.get("info", {})
                             token_dest = info.get("destination", "")
-                            token_mint = info.get("mint", "")
-                            if token_dest == MONITORED_WALLET and token_mint == WSOL_MINT:
-                                sol_amount = int(info.get("amount", 0)) / 1e9
+                            if token_dest == MONITORED_WALLET:
+                                amount = int(info.get("amount", 0))
+                                sol_amount = amount / 1e9
                                 from_addr = info.get("source", "")
                                 to_addr = token_dest
+                                token_type = f"SPL (mint: {info.get('mint', 'unknown')})"
 
                         if sol_amount > 0:
                             sol_price = await get_sol_price()
-                            usd_value = sol_amount * sol_price
+                            usd_value = sol_amount * sol_price if token_type == "SOL" else 0
                             bullets = generate_bullets(sol_amount)
 
                             msg_text = (
                                 f"🪙 New $BabyGOV contribution detected!\n\n"
                                 f"🔁 From: `{from_addr}`\n"
                                 f"📥 To: `{to_addr}`\n"
+                                f"🏷 Token Type: *{token_type}*\n"
                                 f"🟨 Amount:\n"
                                 f"┌────────────────────────────┐\n"
-                                f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
-                                f"└────────────────────────────┘\n"
+                                f"│  {sol_amount:.4f} ({token_type})"
+                            )
+
+                            if usd_value > 0:
+                                msg_text += f" (~${usd_value:,.2f})"
+
+                            msg_text += (
+                                f"  │\n└────────────────────────────┘\n"
                                 f"{bullets}\n\n"
                                 f"🔗 https://solscan.io/tx/{sig}\n\n"
                                 f"───────────────\n"
-                                f"🤖 BuyDetector™ Solana\n"
+                                f"🤖 BuyDetector™ Solana (All SPL)\n"
                                 f"🔧 by ReactLAB"
                             )
 
@@ -138,7 +149,7 @@ async def check_transactions():
                             else:
                                 bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
 
-                            print(f"✅ TX posted: {sig}")
+                            print(f"✅ TX posted: {sig} | Token: {token_type}")
 
                     except Exception as inner_e:
                         print(f"⚠️ Error inside instruction at index {i}: {inner_e}")
