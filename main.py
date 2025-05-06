@@ -1,4 +1,4 @@
-import os, asyncio, aiohttp, json
+import os, asyncio, aiohttp, json, base64
 from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
@@ -79,34 +79,35 @@ async def check_transactions():
                         print(f"⚠️ Ignored non-dict instruction at index {i}")
                         continue
 
-                    parsed_data = instr.get("parsed")
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
+                    parsed_data = instr.get("parsed")
 
-                    if parsed_data and isinstance(parsed_data, dict):
-                        # Parsed: SOL native transfer
-                        if instr.get("program") == "system" and parsed_data.get("type") == "transfer":
-                            info = parsed_data.get("info", {})
-                            lamports = int(info.get("lamports", 0))
-                            sol_amount = lamports / 1e9
+                    # 1️⃣ Parsed SYSTEM transfer (SOL)
+                    if parsed_data and instr.get("program") == "system" and parsed_data.get("type") == "transfer":
+                        info = parsed_data.get("info", {})
+                        lamports = int(info.get("lamports", 0))
+                        sol_amount = lamports / 1e9
+                        from_addr = info.get("source", "")
+                        to_addr = info.get("destination", "")
+
+                    # 2️⃣ Parsed SPL WSOL transfer
+                    elif parsed_data and instr.get("program") == "spl-token" and parsed_data.get("type") == "transfer":
+                        info = parsed_data.get("info", {})
+                        if (
+                            info.get("mint") == WSOL_MINT and
+                            info.get("destination") == MONITORED_WALLET
+                        ):
+                            amount = int(info.get("amount", 0))
+                            sol_amount = amount / 1e9
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
 
-                        # Parsed: WSOL SPL transfer
-                        elif instr.get("program") == "spl-token" and parsed_data.get("type") == "transfer":
-                            info = parsed_data.get("info", {})
-                            if (
-                                info.get("mint") == WSOL_MINT and
-                                info.get("destination") == MONITORED_WALLET
-                            ):
-                                amount = int(info.get("amount", 0))
-                                sol_amount = amount / 1e9
-                                from_addr = info.get("source", "")
-                                to_addr = info.get("destination", "")
-                    else:
-                        print(f"⚠️ Skipping unparsed instruction at index {i}")
-                        continue
+                    # 3️⃣ Fallback: RAW base64 SYSTEM transfer
+                    elif not parsed_data and instr.get("program") == "system" and "data" in instr:
+                        print(f"⚠️ RAW SYSTEM instruction at index {i}, can't parse directly")
+                        continue  # Requires binary decoding to extract lamports
 
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
