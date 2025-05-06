@@ -4,7 +4,7 @@ import asyncio, os, aiohttp
 from telegram import Bot
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "WalletulTauPresale"  # adresa de wallet
+MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"  # adresa de wallet
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
