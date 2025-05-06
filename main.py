@@ -30,11 +30,15 @@ def generate_bullets(sol_amount):
 async def test_telegram_message():
     try:
         print("🧪 Sending test message to Telegram...")
-        test_text = "✅ *Bot started and connected successfully!*\n\n🟢 Solana BuyDetector™ is live.\n🔍  Let`s ROCK these BabyGOV!!"
+        test_text = (
+            "✅ Bot started and connected successfully!\n\n"
+            "🟢 Solana BuyDetector is live.\n"
+            "🔍 Waiting for first transaction..."
+        )
         if GIF_URL:
-            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text, parse_mode="Markdown")
+            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text)
         else:
-            await bot.send_message(chat_id=CHAT_ID, text=test_text, parse_mode="Markdown")
+            await bot.send_message(chat_id=CHAT_ID, text=test_text)
         print("✅ Test message sent to Telegram!")
     except Exception as e:
         print(f"❌ Failed to send test Telegram message: {e}")
@@ -67,7 +71,7 @@ async def check_transactions():
                         parsed = val.to_json()
                     elif isinstance(val, dict):
                         parsed = val
-                    elif isinstance(val, str):
+                    elif isinstance(val, str) and val.startswith("{"):
                         parsed = json.loads(val)
                     else:
                         print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
@@ -124,17 +128,17 @@ async def check_transactions():
                             bullets = generate_bullets(sol_amount)
 
                             msg_text = (
-                                f"🪙 *New $BabyGOV contribution detected!*\n\n"
+                                f"🪙 New $BabyGOV contribution detected!\n\n"
                                 f"🔁 From: `{from_addr}`\n"
                                 f"📥 To: `{to_addr}`\n"
-                                f"🟨 *Amount:*\n"
+                                f"🟨 Amount:\n"
                                 f"┌────────────────────────────┐\n"
                                 f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
                                 f"└────────────────────────────┘\n"
                                 f"{bullets}\n\n"
-                                f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
+                                f"🔗 https://solscan.io/tx/{sig}\n\n"
                                 f"───────────────\n"
-                                f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
+                                f"🤖 BuyDetector™ Solana\n"
                                 f"🔧 by ReactLAB"
                             )
 
@@ -154,5 +158,5 @@ async def check_transactions():
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(test_telegram_message())  # trimite mesaj test la pornire
-    asyncio.run(check_transactions())     # începe monitorizarea
+    asyncio.run(test_telegram_message())
+    asyncio.run(check_transactions())
