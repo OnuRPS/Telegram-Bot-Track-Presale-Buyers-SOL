@@ -28,17 +28,17 @@ def generate_bullets(sol_amount):
     return '🥇' * bullets_count
 
 async def test_telegram_message():
+    print("🧪 Sending test message to Telegram...")
+    test_text = (
+        "✅ Bot started and connected successfully!\n\n"
+        "🟢 Solana BuyDetector is live.\n"
+        "🔍 Waiting for first transaction..."
+    )
     try:
-        print("🧪 Sending test message to Telegram...")
-        test_text = (
-            "✅ Bot started and connected successfully!\n\n"
-            "🟢 Solana BuyDetector is live.\n"
-            "🔍 Waiting for first transaction..."
-        )
         if GIF_URL:
-            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text)
+            bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text)
         else:
-            await bot.send_message(chat_id=CHAT_ID, text=test_text)
+            bot.send_message(chat_id=CHAT_ID, text=test_text)
         print("✅ Test message sent to Telegram!")
     except Exception as e:
         print(f"❌ Failed to send test Telegram message: {e}")
@@ -71,10 +71,10 @@ async def check_transactions():
                         parsed = val.to_json()
                     elif isinstance(val, dict):
                         parsed = val
-                    elif isinstance(val, str) and val.startswith("{"):
+                    elif isinstance(val, str) and val.startswith("{") and "transaction" in val:
                         parsed = json.loads(val)
                     else:
-                        print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
+                        print(f"⚠️ Skipping unexpected tx format: {val}")
                         await asyncio.sleep(10)
                         continue
                 except Exception as e:
@@ -143,9 +143,9 @@ async def check_transactions():
                             )
 
                             if GIF_URL:
-                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
+                                bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
                             else:
-                                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                                bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
 
                             print(f"✅ TX posted: {sig}")
 
