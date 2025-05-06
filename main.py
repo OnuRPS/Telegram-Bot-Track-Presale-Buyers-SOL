@@ -53,8 +53,12 @@ async def check_transactions():
                     parsed = val.to_json()
                 elif isinstance(val, dict):
                     parsed = val
+                elif isinstance(val, str):
+                    print(f"⚠️ Got string instead of parsed tx. Ignoring: {val[:60]}...")
+                    await asyncio.sleep(10)
+                    continue
                 else:
-                    print(f"⚠️ Invalid tx format: {type(val)} – content: {val}")
+                    print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
                     await asyncio.sleep(10)
                     continue
 
