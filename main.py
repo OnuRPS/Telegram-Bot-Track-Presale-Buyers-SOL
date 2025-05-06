@@ -80,20 +80,21 @@ async def check_transactions():
                         continue
 
                     parsed_data = instr.get("parsed")
-
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
 
                     if parsed_data and isinstance(parsed_data, dict):
-                        if instr["program"] == "system" and parsed_data.get("type") == "transfer":
+                        # Parsed: SOL native transfer
+                        if instr.get("program") == "system" and parsed_data.get("type") == "transfer":
                             info = parsed_data.get("info", {})
                             lamports = int(info.get("lamports", 0))
                             sol_amount = lamports / 1e9
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
 
-                        elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
+                        # Parsed: WSOL SPL transfer
+                        elif instr.get("program") == "spl-token" and parsed_data.get("type") == "transfer":
                             info = parsed_data.get("info", {})
                             if (
                                 info.get("mint") == WSOL_MINT and
