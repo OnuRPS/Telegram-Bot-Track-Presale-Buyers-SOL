@@ -65,81 +65,71 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
+                debug(f"🔍 Processing TX: {sig}")
+                sol_amount = 0
+                from_addr = "Unknown"
+                to_addr = MONITORED_WALLET
+
                 parsed = tx_resp.value.transaction
                 msg = parsed.get("message", {})
                 instructions = msg.get("instructions", [])
+                meta = tx_resp.value.meta
 
-                debug(f"TX {sig} has {len(instructions)} instruction(s)")
+                # === 1️⃣ Verificăm WSOL via post_token_balances ===
+                balances = meta.post_token_balances if meta else []
+                for b in balances:
+                    if b.owner == MONITORED_WALLET and b.mint == WSOL_MINT:
+                        sol_amount = float(b.ui_token_amount.ui_amount)
+                        debug(f"[WSOL DETECTED] Amount: {sol_amount}")
+                        break
 
-                for i, instr in enumerate(instructions):
-                    sol_amount = 0
-                    from_addr = ""
-                    to_addr = ""
+                # === 2️⃣ Dacă nu e WSOL, verificăm transfer direct de SOL ===
+                if sol_amount == 0:
+                    for i, instr in enumerate(instructions):
+                        program = instr.get("program", "unknown")
+                        parsed_data = instr.get("parsed")
+                        if parsed_data and program == "system" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            if info.get("destination") == MONITORED_WALLET:
+                                lamports = int(info.get("lamports", 0))
+                                sol_amount = lamports / 1e9
+                                from_addr = info.get("source", "Unknown")
+                                to_addr = info.get("destination", MONITORED_WALLET)
+                                debug(f"[SOL DETECTED] Amount: {sol_amount}")
+                                break
 
-                    program = instr.get("program", "unknown")
-                    parsed_data = instr.get("parsed")
+                # === 3️⃣ Trimitem mesaj dacă e ceva de trimis ===
+                if sol_amount > 0:
+                    sol_price = await get_sol_price()
+                    usd_value = sol_amount * sol_price
+                    bullets = generate_bullets(sol_amount)
 
-                    debug(f"Instr #{i} program: {program}")
-                    if parsed_data:
-                        debug(f"Instr #{i} type: {parsed_data.get('type', 'n/a')} parsed")
+                    msg_text = (
+                        f"🪙 *New $BabyGOV contribution detected!*\n\n"
+                        f"🔁 From: `{from_addr}`\n"
+                        f"📥 To: `{to_addr}`\n"
+                        f"🟨 *Amount:*\n"
+                        f"┌────────────────────────────┐\n"
+                        f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
+                        f"└────────────────────────────┘\n"
+                        f"{bullets}\n\n"
+                        f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
+                        f"───────────────\n"
+                        f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
+                        f"🔧 by ReactLAB"
+                    )
 
-                    # SYSTEM transfer (SOL)
-                    if parsed_data and program == "system" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        lamports = int(info.get("lamports", 0))
-                        sol_amount = lamports / 1e9
-                        from_addr = info.get("source", "")
-                        to_addr = info.get("destination", "")
-                        debug(f"Detected SOL transfer: {sol_amount} SOL")
-
-                    # SPL transfer (WSOL mint) — detect manually
-                    elif program == "spl-token":
-                        info = parsed_data.get("info", {}) if parsed_data else {}
-                        mint = info.get("mint", "")
-                        dest = info.get("destination", "")
-
-                        if mint == WSOL_MINT and dest == MONITORED_WALLET:
-                            amount = int(info.get("amount", 0))
-                            sol_amount = amount / 1e9
-                            from_addr = info.get("source", "")
-                            to_addr = dest
-                            debug(f"Detected WSOL transfer: {sol_amount} SOL")
+                    try:
+                        if GIF_URL:
+                            bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
                         else:
-                            debug(f"Instr #{i} is SPL-token but not WSOL to our wallet.")
-                            continue
-                    else:
-                        debug(f"Instr #{i} skipped: not SOL/WSOL transfer")
-                        continue
-
-                    if sol_amount > 0:
-                        sol_price = await get_sol_price()
-                        usd_value = sol_amount * sol_price
-                        bullets = generate_bullets(sol_amount)
-
-                        msg_text = (
-                            f"🪙 *New $BabyGOV contribution detected!*\n\n"
-                            f"🔁 From: `{from_addr}`\n"
-                            f"📥 To: `{to_addr}`\n"
-                            f"🟨 *Amount:*\n"
-                            f"┌────────────────────────────┐\n"
-                            f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
-                            f"└────────────────────────────┘\n"
-                            f"{bullets}\n\n"
-                            f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
-                            f"───────────────\n"
-                            f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
-                            f"🔧 by ReactLAB"
-                        )
-
-                        try:
-                            if GIF_URL:
-                                bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
-                            else:
-                                bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
-                            print(f"✅ TX posted: {sig}")
-                            last_sig = sig
-                        except Exception as e:
-                            print(f"❌ Failed to send Telegram message: {e}")
+                            bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                        print(f"✅ TX posted: {sig}")
+                        last_sig = sig
+                    except Exception as e:
+                        print(f"❌ Failed to send Telegram message: {e}")
+                else:
+                    debug("⚠️ No SOL or WSOL received in this transaction.")
 
         except Exception as e:
             print(f"⚠️ Outer error: {e}")
