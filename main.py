@@ -27,6 +27,18 @@ def generate_bullets(sol_amount):
     bullets_count = min(bullets_count, 100)
     return '🥇' * bullets_count
 
+async def test_telegram_message():
+    try:
+        print("🧪 Sending test message to Telegram...")
+        test_text = "✅ *Bot started and connected successfully!*\n\n🟢 Solana BuyDetector™ is live.\n🔍 Waiting for first transaction..."
+        if GIF_URL:
+            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=test_text, parse_mode="Markdown")
+        else:
+            await bot.send_message(chat_id=CHAT_ID, text=test_text, parse_mode="Markdown")
+        print("✅ Test message sent to Telegram!")
+    except Exception as e:
+        print(f"❌ Failed to send test Telegram message: {e}")
+
 async def check_transactions():
     global last_sig
     client = AsyncClient(SOLANA_RPC)
@@ -56,7 +68,7 @@ async def check_transactions():
                     elif isinstance(val, dict):
                         parsed = val
                     elif isinstance(val, str):
-                        parsed = json.loads(val)  # 🔥 AICI era cheia
+                        parsed = json.loads(val)
                     else:
                         print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
                         await asyncio.sleep(10)
@@ -142,4 +154,5 @@ async def check_transactions():
         await asyncio.sleep(10)
 
 if __name__ == "__main__":
-    asyncio.run(check_transactions())
+    asyncio.run(test_telegram_message())  # trimite mesaj test la pornire
+    asyncio.run(check_transactions())     # începe monitorizarea
