@@ -2,3 +2,5 @@ aiohttp
 python-telegram-bot==13.15
 solana
 solders
+urllib3
+six
