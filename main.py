@@ -48,10 +48,13 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
-                if hasattr(tx_resp.value, "to_json"):
-                    parsed = tx_resp.value.to_json()
+                val = tx_resp.value
+                if hasattr(val, "to_json"):
+                    parsed = val.to_json()
+                elif isinstance(val, dict):
+                    parsed = val
                 else:
-                    print(f"⚠️ Unexpected transaction format (no to_json): {type(tx_resp.value)}")
+                    print(f"⚠️ Invalid tx format: {type(val)} – content: {val}")
                     await asyncio.sleep(10)
                     continue
 
