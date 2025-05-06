@@ -3,8 +3,9 @@ from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 
+# === CONFIG ===
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "D6FDaJjvRwBSm54rBP7ViRbF7KQxzpNw35TFWNWwpsbB"
+MONITORED_WALLET = "D6FDaJjvRwBSm54rBP7ViRbF7KQxzpNw35TFWNWwpsbB"  # Adresa de la presale
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
@@ -85,7 +86,7 @@ async def check_transactions():
                     from_addr = ""
                     to_addr = ""
 
-                    # Native SOL transfer
+                    # Native SOL
                     if instr["program"] == "system" and parsed_data.get("type") == "transfer":
                         info = parsed_data.get("info", {})
                         lamports = int(info.get("lamports", 0))
@@ -93,11 +94,15 @@ async def check_transactions():
                         from_addr = info.get("source", "")
                         to_addr = info.get("destination", "")
 
-                    # WSOL SPL transfer only
+                    # WSOL SPL token
                     elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
                         info = parsed_data.get("info", {})
-                        if info.get("mint") == WSOL_MINT and info.get("destination") == MONITORED_WALLET:
-                            sol_amount = int(info.get("amount", 0)) / 1e9
+                        if (
+                            info.get("mint") == WSOL_MINT and
+                            info.get("destination") == MONITORED_WALLET
+                        ):
+                            amount = int(info.get("amount", 0))
+                            sol_amount = amount / 1e9
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
                         else:
