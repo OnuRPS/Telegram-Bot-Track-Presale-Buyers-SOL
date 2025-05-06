@@ -1,4 +1,4 @@
-import os, asyncio, aiohttp, json
+import os, asyncio, aiohttp, json, inspect
 from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
@@ -64,17 +64,17 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
-                val = tx_resp.value
-
+                # 👇 Safe parsing logic
                 try:
-                    if hasattr(val, "to_json"):
+                    val = tx_resp.value
+                    if hasattr(val, "to_json") and inspect.ismethod(val.to_json):
                         parsed = val.to_json()
                     elif isinstance(val, dict):
                         parsed = val
-                    elif isinstance(val, str) and val.startswith("{") and "transaction" in val:
+                    elif isinstance(val, str):
                         parsed = json.loads(val)
                     else:
-                        print(f"⚠️ Skipping unexpected tx format: {val}")
+                        print(f"⚠️ Unknown tx format: {type(val)}")
                         await asyncio.sleep(10)
                         continue
                 except Exception as e:
@@ -84,7 +84,7 @@ async def check_transactions():
 
                 tx = parsed.get("transaction")
                 if not isinstance(tx, dict):
-                    print(f"⚠️ Skipping malformed transaction (not dict): {type(tx)}")
+                    print(f"⚠️ Skipping malformed transaction: {type(tx)}")
                     await asyncio.sleep(10)
                     continue
 
