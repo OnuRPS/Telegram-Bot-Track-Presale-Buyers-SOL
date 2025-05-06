@@ -1,7 +1,7 @@
+import os, asyncio, aiohttp, json
+from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
-import asyncio, os, aiohttp
-from telegram import Bot
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
 MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"
@@ -49,16 +49,20 @@ async def check_transactions():
                     continue
 
                 val = tx_resp.value
-                if hasattr(val, "to_json"):
-                    parsed = val.to_json()
-                elif isinstance(val, dict):
-                    parsed = val
-                elif isinstance(val, str):
-                    print(f"⚠️ Got string instead of parsed tx. Ignoring: {val[:60]}...")
-                    await asyncio.sleep(10)
-                    continue
-                else:
-                    print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
+
+                try:
+                    if hasattr(val, "to_json"):
+                        parsed = val.to_json()
+                    elif isinstance(val, dict):
+                        parsed = val
+                    elif isinstance(val, str):
+                        parsed = json.loads(val)  # 🔥 AICI era cheia
+                    else:
+                        print(f"⚠️ Unknown tx format: {type(val)} – skipping.")
+                        await asyncio.sleep(10)
+                        continue
+                except Exception as e:
+                    print(f"⚠️ Failed to parse transaction: {e}")
                     await asyncio.sleep(10)
                     continue
 
