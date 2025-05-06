@@ -135,7 +135,7 @@ async def check_transactions():
                         f"🪙 *New $BabyGOV contribution detected!*\n\n"
                         f"🔁 From: `{from_addr}`\n"
                         f"📥 To: `{to_addr}`\n"
-                        f"🟨 *Amount:*\n"
+                        f"🟨 *Amount Raised:*\n"
                         f"┌────────────────────────────┐\n"
                         f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
                         f"└────────────────────────────┘\n"
