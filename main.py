@@ -80,33 +80,32 @@ async def check_transactions():
                         continue
 
                     parsed_data = instr.get("parsed")
-                    if not isinstance(parsed_data, dict):
-                        print(f"⚠️ Skipping unparsed instruction at index {i}")
-                        continue
 
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
 
-                    if instr["program"] == "system" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        lamports = int(info.get("lamports", 0))
-                        sol_amount = lamports / 1e9
-                        from_addr = info.get("source", "")
-                        to_addr = info.get("destination", "")
-
-                    elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        if (
-                            info.get("mint") == WSOL_MINT and
-                            info.get("destination") == MONITORED_WALLET
-                        ):
-                            amount = int(info.get("amount", 0))
-                            sol_amount = amount / 1e9
+                    if parsed_data and isinstance(parsed_data, dict):
+                        if instr["program"] == "system" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            lamports = int(info.get("lamports", 0))
+                            sol_amount = lamports / 1e9
                             from_addr = info.get("source", "")
                             to_addr = info.get("destination", "")
-                        else:
-                            continue
+
+                        elif instr["program"] == "spl-token" and parsed_data.get("type") == "transfer":
+                            info = parsed_data.get("info", {})
+                            if (
+                                info.get("mint") == WSOL_MINT and
+                                info.get("destination") == MONITORED_WALLET
+                            ):
+                                amount = int(info.get("amount", 0))
+                                sol_amount = amount / 1e9
+                                from_addr = info.get("source", "")
+                                to_addr = info.get("destination", "")
+                    else:
+                        print(f"⚠️ Skipping unparsed instruction at index {i}")
+                        continue
 
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
@@ -124,16 +123,18 @@ async def check_transactions():
                             f"{bullets}\n\n"
                             f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
                             f"───────────────\n"
-                            f"🤖 𝒓𝒾𝒿𝓀𝒳𝓂𝓁𝓆𝓈𝓃™ Solana\n"
+                            f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
                             f"🔧 by ReactLAB"
                         )
 
-                        if GIF_URL:
-                            await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
-                        else:
-                            await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
-
-                        print(f"✅ TX posted: {sig}")
+                        try:
+                            if GIF_URL:
+                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
+                            else:
+                                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
+                            print(f"✅ TX posted: {sig}")
+                        except Exception as e:
+                            print(f"❌ Failed to send Telegram message: {e}")
 
         except Exception as e:
             print(f"⚠️ Outer error: {e}")
