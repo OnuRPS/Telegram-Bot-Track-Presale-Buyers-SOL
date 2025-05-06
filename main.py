@@ -1,4 +1,4 @@
-import os, asyncio, aiohttp, json, base64
+import os, asyncio, aiohttp, json
 from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
@@ -65,59 +65,51 @@ async def check_transactions():
                     await asyncio.sleep(10)
                     continue
 
-                try:
-                    raw = tx_resp.value.to_json()
-                    parsed = json.loads(raw) if isinstance(raw, str) else raw
-                except Exception as e:
-                    print(f"⚠️ Failed to convert transaction to JSON: {e}")
-                    await asyncio.sleep(10)
-                    continue
-
-                tx = parsed.get("transaction", {})
-                msg = tx.get("message", {})
+                parsed = tx_resp.value.transaction
+                msg = parsed.get("message", {})
                 instructions = msg.get("instructions", [])
 
                 debug(f"TX {sig} has {len(instructions)} instruction(s)")
 
                 for i, instr in enumerate(instructions):
-                    if not isinstance(instr, dict):
-                        debug(f"Instr #{i} skipped: not a dict")
-                        continue
-
                     sol_amount = 0
                     from_addr = ""
                     to_addr = ""
-                    parsed_data = instr.get("parsed")
+
                     program = instr.get("program", "unknown")
+                    parsed_data = instr.get("parsed")
+
                     debug(f"Instr #{i} program: {program}")
-
                     if parsed_data:
-                        debug(f"Instr #{i} type: {parsed_data.get('type')} parsed")
+                        debug(f"Instr #{i} type: {parsed_data.get('type', 'n/a')} parsed")
 
-                    # 1️⃣ Parsed SYSTEM transfer (SOL)
+                    # SYSTEM transfer (SOL)
                     if parsed_data and program == "system" and parsed_data.get("type") == "transfer":
                         info = parsed_data.get("info", {})
                         lamports = int(info.get("lamports", 0))
                         sol_amount = lamports / 1e9
                         from_addr = info.get("source", "")
                         to_addr = info.get("destination", "")
+                        debug(f"Detected SOL transfer: {sol_amount} SOL")
 
-                    # 2️⃣ Parsed SPL WSOL transfer
-                    elif parsed_data and program == "spl-token" and parsed_data.get("type") == "transfer":
-                        info = parsed_data.get("info", {})
-                        if (
-                            info.get("mint") == WSOL_MINT and
-                            info.get("destination") == MONITORED_WALLET
-                        ):
+                    # SPL transfer (WSOL mint) — detect manually
+                    elif program == "spl-token":
+                        info = parsed_data.get("info", {}) if parsed_data else {}
+                        mint = info.get("mint", "")
+                        dest = info.get("destination", "")
+
+                        if mint == WSOL_MINT and dest == MONITORED_WALLET:
                             amount = int(info.get("amount", 0))
                             sol_amount = amount / 1e9
                             from_addr = info.get("source", "")
-                            to_addr = info.get("destination", "")
+                            to_addr = dest
+                            debug(f"Detected WSOL transfer: {sol_amount} SOL")
                         else:
-                            debug(f"Instr #{i} is SPL but not WSOL or not to monitored wallet")
+                            debug(f"Instr #{i} is SPL-token but not WSOL to our wallet.")
                             continue
                     else:
                         debug(f"Instr #{i} skipped: not SOL/WSOL transfer")
+                        continue
 
                     if sol_amount > 0:
                         sol_price = await get_sol_price()
