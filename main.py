@@ -51,9 +51,12 @@ async def check_transactions():
                 parsed = tx_resp.value.to_json()
 
                 for instr in parsed["transaction"]["message"]["instructions"]:
+                    if not isinstance(instr, dict):
+                        continue  # Skip dacă instrucțiunea e string
+
                     parsed_data = instr.get("parsed")
                     if not isinstance(parsed_data, dict):
-                        continue  # Skip if parsed is missing or invalid
+                        continue  # Skip dacă parsed nu e dict
 
                     sol_amount = 0
                     from_addr = ""
