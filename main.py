@@ -49,7 +49,15 @@ async def check_transactions():
                     continue
 
                 parsed = tx_resp.value.to_json()
-                instructions = parsed.get("transaction", {}).get("message", {}).get("instructions", [])
+
+                tx = parsed.get("transaction")
+                if not isinstance(tx, dict):
+                    print(f"⚠️ Skipping malformed transaction (not dict): {type(tx)}")
+                    await asyncio.sleep(10)
+                    continue
+
+                msg = tx.get("message", {})
+                instructions = msg.get("instructions", [])
 
                 for i, instr in enumerate(instructions):
                     if not isinstance(instr, dict):
@@ -87,7 +95,7 @@ async def check_transactions():
                             usd_value = sol_amount * sol_price
                             bullets = generate_bullets(sol_amount)
 
-                            msg = (
+                            msg_text = (
                                 f"🪙 *New $BabyGOV contribution detected!*\n\n"
                                 f"🔁 From: `{from_addr}`\n"
                                 f"📥 To: `{to_addr}`\n"
@@ -103,9 +111,9 @@ async def check_transactions():
                             )
 
                             if GIF_URL:
-                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg, parse_mode="Markdown")
+                                await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg_text, parse_mode="Markdown")
                             else:
-                                await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+                                await bot.send_message(chat_id=CHAT_ID, text=msg_text, parse_mode="Markdown")
 
                             print(f"✅ TX posted: {sig}")
 
@@ -113,7 +121,7 @@ async def check_transactions():
                         print(f"⚠️ Error inside instruction at index {i}: {inner_e}")
 
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            print(f"⚠️ Outer error: {e}")
 
         await asyncio.sleep(10)
 
