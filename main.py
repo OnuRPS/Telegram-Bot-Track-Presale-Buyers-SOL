@@ -4,7 +4,7 @@ import asyncio, os, aiohttp
 from telegram import Bot
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"  # adresa de wallet
+MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"  # Replace with your actual wallet
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
@@ -22,10 +22,15 @@ async def get_sol_price():
     except:
         return 0.0
 
+def generate_bullets(sol_amount):
+    bullets_count = int(sol_amount / 0.1)
+    bullets_count = min(bullets_count, 100)
+    return '🥇' * bullets_count
+
 async def check_transactions():
     global last_sig
     client = AsyncClient(SOLANA_RPC)
-    pubkey = PublicKey(MONITORED_WALLET)
+    pubkey = Pubkey.from_string(MONITORED_WALLET)
     print("🟢 Solana BuyDetector™ activated.")
 
     while True:
@@ -39,7 +44,6 @@ async def check_transactions():
                 tx_resp = await client.get_transaction(sig, encoding="jsonParsed")
                 parsed = tx_resp.value
 
-                # Caută instrucțiuni relevante (transfer SOL)
                 for instr in parsed['transaction']['message']['instructions']:
                     if instr['program'] == 'system':
                         lamports = int(instr['parsed']['info']['lamports'])
@@ -49,15 +53,17 @@ async def check_transactions():
 
                         sol_price = await get_sol_price()
                         usd_value = sol_amount * sol_price
+                        bullets = generate_bullets(sol_amount)
 
                         msg = (
-                            f"🪙 *Nouă tranzacție $BabyGOV detectată (Solana)*\n\n"
+                            f"🪙 *New $BabyGOV transaction detected (Solana)*\n\n"
                             f"🔁 From: `{from_addr}`\n"
                             f"📥 To: `{to_addr}`\n"
                             f"🟨 *Amount Purchased:*\n"
                             f"┌────────────────────────────┐\n"
                             f"│  {sol_amount:.4f} SOL (~${usd_value:,.2f})  │\n"
-                            f"└────────────────────────────┘\n\n"
+                            f"└────────────────────────────┘\n"
+                            f"{bullets}\n\n"
                             f"🔗 [View on Solscan](https://solscan.io/tx/{sig})\n\n"
                             f"───────────────\n"
                             f"🤖 𝓑𝓾𝔂𝓓𝓮𝓽𝓮𝓬𝓽𝓸𝓻™ Solana\n"
@@ -68,10 +74,11 @@ async def check_transactions():
                             await bot.send_animation(chat_id=CHAT_ID, animation=GIF_URL, caption=msg, parse_mode="Markdown")
                         else:
                             await bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+
                         print(f"✅ TX posted: {sig}")
 
         except Exception as e:
-            print(f"⚠️ Eroare: {e}")
+            print(f"⚠️ Error: {e}")
 
         await asyncio.sleep(10)
 
