@@ -4,7 +4,7 @@ from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"
+MONITORED_WALLET = "D6FDaJjvRwBSm54rBP7ViRbF7KQxzpNw35TFWNWwpsbB"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
