@@ -3,8 +3,9 @@ from solders.pubkey import Pubkey
 import asyncio, os, aiohttp
 from telegram import Bot
 
+# Configurare rețea și bot
 SOLANA_RPC = "https://api.mainnet-beta.solana.com"
-MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"  # Replace with your actual wallet
+MONITORED_WALLET = "FsG7BTpThCsnP2c78qc9F2inYEqUoSEKGCAQ8eMyYtsi"  # Replace cu walletul real
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GIF_URL = os.getenv("GIF_URL")
@@ -13,6 +14,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 
 last_sig = None
 
+# Funcție pentru a lua prețul SOL în USD
 async def get_sol_price():
     try:
         async with aiohttp.ClientSession() as session:
@@ -22,11 +24,13 @@ async def get_sol_price():
     except:
         return 0.0
 
+# Emojis vizuale în funcție de valoare
 def generate_bullets(sol_amount):
     bullets_count = int(sol_amount / 0.1)
     bullets_count = min(bullets_count, 100)
     return '🥇' * bullets_count
 
+# Funcția principală de monitorizare
 async def check_transactions():
     global last_sig
     client = AsyncClient(SOLANA_RPC)
@@ -42,14 +46,20 @@ async def check_transactions():
             if sig != last_sig:
                 last_sig = sig
                 tx_resp = await client.get_transaction(sig, encoding="jsonParsed", max_supported_transaction_version=0)
-                parsed["transaction"]["message"]["instructions"]
 
-                for instr in parsed['transaction']['message']['instructions']:
-                    if instr['program'] == 'system':
-                        lamports = int(instr['parsed']['info']['lamports'])
+                if not tx_resp.value:
+                    print(f"⚠️ Transaction data missing for {sig}")
+                    await asyncio.sleep(10)
+                    continue
+
+                parsed = tx_resp.value.to_json()
+
+                for instr in parsed["transaction"]["message"]["instructions"]:
+                    if instr["program"] == "system":
+                        lamports = int(instr["parsed"]["info"]["lamports"])
                         sol_amount = lamports / 1e9
-                        from_addr = instr['parsed']['info']['source']
-                        to_addr = instr['parsed']['info']['destination']
+                        from_addr = instr["parsed"]["info"]["source"]
+                        to_addr = instr["parsed"]["info"]["destination"]
 
                         sol_price = await get_sol_price()
                         usd_value = sol_amount * sol_price
