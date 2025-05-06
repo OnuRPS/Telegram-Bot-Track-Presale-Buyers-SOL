@@ -41,7 +41,7 @@ async def check_transactions():
 
             if sig != last_sig:
                 last_sig = sig
-                tx_resp = await client.get_transaction(sig, encoding="jsonParsed")
+                tx_resp = await client.get_transaction(sig, encoding="jsonParsed", max_supported_transaction_version=0)
                 parsed = tx_resp.value
 
                 for instr in parsed['transaction']['message']['instructions']:
