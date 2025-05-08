@@ -35,17 +35,21 @@ async def get_wallet_balance():
     try:
         client = AsyncClient(SOLANA_RPC)
         resp = await client.get_token_accounts_by_owner(
-            owner=Pubkey.from_string(MONITORED_WALLET),
-            mint=Pubkey.from_string(WSOL_MINT)
+            Pubkey.from_string(MONITORED_WALLET),
+            "programId",
+            Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
         )
 
         sol_total = 0.0
         for acc in resp.value:
-            data = acc['account']['data'][0]  # base64 encoded string
-            decoded = base64.b64decode(data)
-            amount_bytes = decoded[64:72]
-            amount = int.from_bytes(amount_bytes, 'little') / 1e9
-            sol_total += amount
+            account_info = acc["account"]
+            data_base64 = account_info["data"][0]
+            decoded = base64.b64decode(data_base64)
+            mint = Pubkey(decoded[0:32]).to_string()
+
+            if mint == WSOL_MINT:
+                amount = int.from_bytes(decoded[64:72], "little") / 1e9
+                sol_total += amount
 
         await client.close()
         return sol_total
