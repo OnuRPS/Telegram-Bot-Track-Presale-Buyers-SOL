@@ -33,29 +33,42 @@ async def get_sol_price():
 
 async def get_wallet_balance():
     try:
-        Starting Container
+        from solders.pubkey import Pubkey as SolderPubkey
+        client = AsyncClient(SOLANA_RPC)
+        print("🔍 Fetching raw SPL token accounts...")
 
-🧪 Sending test message to Telegram...
+        resp = await client.get_token_accounts_by_owner(
+            SolderPubkey.from_string(MONITORED_WALLET),
+            "programId",
+            SolderPubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        )
 
-✅ Message sent to chat -1002638745091
+        if not resp.value:
+            print("⚠️ No accounts returned.")
+            await client.close()
+            return 0.0
 
-✅ Message sent to chat -1002512132494
+        sol_total = 0.0
+        for acc in resp.value:
+            try:
+                data_base64 = acc['account']['data'][0]
+                decoded = base64.b64decode(data_base64)
+                mint = SolderPubkey(decoded[0:32]).to_string()
 
-🟢 Solana BuyDetector™ activated.
+                if mint == WSOL_MINT:
+                    amount = int.from_bytes(decoded[64:72], 'little') / 1e9
+                    print(f"✅ WSOL account found: {amount} SOL")
+                    sol_total += amount
+            except Exception as e:
+                print(f"⚠️ Error parsing account: {e}")
 
-🔍 Checking TX: 5r8DW1L9mFmRsWkq1jwP8mZbW9SSXBJ1a4MPQaLvzXqR1a1axxPGvepTGoiw5Nuf2gkDyGTQHa2AP5TNXKMZQpkP
+        print(f"💰 Final WSOL balance: {sol_total}")
+        await client.close()
+        return sol_total
 
-✅ WSOL delta detected: 0.29999999999999716 SOL
-
-🔍 Reading SPL token accounts (raw base64)...
-
-❌ RAW WSOL parse failed: AsyncClient.get_token_accounts_by_owner() got an unexpected keyword argument 'program_id'
-
-✅ Message sent to chat -1002638745091
-
-✅ Message sent to chat -1002512132494
-
-📬 TX posted: 5r8DW1L9mFmRsWkq1jwP8mZbW9SSXBJ1a4MPQaLvzXqR1a1axxPGvepTGoiw5Nuf2gkDyGTQHa2AP5TNXKMZQpkP
+    except Exception as e:
+        print(f"❌ Critical WSOL fetch error: {e}")
+        return 0.0
 
 def generate_bullets(sol_amount):
     bullets_count = int(sol_amount / 0.1)
