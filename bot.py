@@ -34,24 +34,25 @@ async def get_sol_price():
 async def get_wallet_balance():
     try:
         client = AsyncClient(SOLANA_RPC)
-        resp = await client.get_token_accounts_by_owner(
-            Pubkey.from_string(MONITORED_WALLET),
-            "programId",
-            Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        print("🔍 Getting all SPL token accounts...")
+        resp = await client.get_token_accounts_by_owner_json_parsed(
+            owner=Pubkey.from_string(MONITORED_WALLET),
+            program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
         )
 
         sol_total = 0.0
+        print(f"📦 Found {len(resp.value)} token accounts.")
         for acc in resp.value:
-            account_info = acc["account"]
-            data_base64 = account_info["data"][0]
-            decoded = base64.b64decode(data_base64)
-            mint = Pubkey(decoded[0:32]).to_string()
-
+            data = acc.account.data.parsed
+            mint = data["info"]["mint"]
+            amount = data["info"]["tokenAmount"]["uiAmount"]
+            print(f"🔸 Token: {mint} | Amount: {amount}")
             if mint == WSOL_MINT:
-                amount = int.from_bytes(decoded[64:72], "little") / 1e9
                 sol_total += amount
+                print(f"✅ Matched WSOL! Added {amount} to total.")
 
         await client.close()
+        print(f"💰 Total WSOL in wallet: {sol_total}")
         return sol_total
     except Exception as e:
         print(f"⚠️ Error getting WSOL balance: {e}")
