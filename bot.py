@@ -33,42 +33,29 @@ async def get_sol_price():
 
 async def get_wallet_balance():
     try:
-        from solders.pubkey import Pubkey as SolderPubkey  # workaround
-        client = AsyncClient(SOLANA_RPC)
-        print("🔍 Reading SPL token accounts (raw base64)...")
+        Starting Container
 
-        resp = await client.get_token_accounts_by_owner(
-            owner=SolderPubkey.from_string(MONITORED_WALLET),
-            program_id=SolderPubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-        )
+🧪 Sending test message to Telegram...
 
-        if not resp.value:
-            print("⚠️ No SPL token accounts found.")
-            await client.close()
-            return 0.0
+✅ Message sent to chat -1002638745091
 
-        sol_total = 0.0
-        for acc in resp.value:
-            try:
-                data_base64 = acc["account"]["data"][0]
-                decoded = base64.b64decode(data_base64)
-                mint_bytes = decoded[0:32]
-                mint = SolderPubkey(mint_bytes).to_string()
+✅ Message sent to chat -1002512132494
 
-                if mint == WSOL_MINT:
-                    amount_bytes = decoded[64:72]
-                    amount = int.from_bytes(amount_bytes, "little") / 1e9
-                    print(f"✅ Found WSOL account: {amount} SOL")
-                    sol_total += amount
-            except Exception as e:
-                print(f"⚠️ Token parse failed: {e}")
+🟢 Solana BuyDetector™ activated.
 
-        print(f"💰 WSOL Balance Total: {sol_total}")
-        await client.close()
-        return sol_total
-    except Exception as e:
-        print(f"❌ RAW WSOL parse failed: {e}")
-        return 0.0
+🔍 Checking TX: 5r8DW1L9mFmRsWkq1jwP8mZbW9SSXBJ1a4MPQaLvzXqR1a1axxPGvepTGoiw5Nuf2gkDyGTQHa2AP5TNXKMZQpkP
+
+✅ WSOL delta detected: 0.29999999999999716 SOL
+
+🔍 Reading SPL token accounts (raw base64)...
+
+❌ RAW WSOL parse failed: AsyncClient.get_token_accounts_by_owner() got an unexpected keyword argument 'program_id'
+
+✅ Message sent to chat -1002638745091
+
+✅ Message sent to chat -1002512132494
+
+📬 TX posted: 5r8DW1L9mFmRsWkq1jwP8mZbW9SSXBJ1a4MPQaLvzXqR1a1axxPGvepTGoiw5Nuf2gkDyGTQHa2AP5TNXKMZQpkP
 
 def generate_bullets(sol_amount):
     bullets_count = int(sol_amount / 0.1)
