@@ -41,24 +41,26 @@ async def get_wallet_balance():
             opts=None
         )
 
-        if not resp.value:
+        resp_json = resp.to_dict()  # 👈 FORȚĂM DICT, ca să putem lucra cu el
+
+        if not resp_json["result"]["value"]:
             print("⚠️ No token accounts returned.")
             await client.close()
             return 0.0
 
         sol_total = 0.0
-        print(f"📦 Found {len(resp.value)} token accounts. Checking for WSOL...")
+        accounts = resp_json["result"]["value"]
+        print(f"📦 Found {len(accounts)} token accounts. Checking for WSOL...")
 
-        for acc in resp.value:
+        for acc in accounts:
             try:
-                account_data = acc["account"]["data"]["parsed"]
-                info = account_data.get("info", {})
+                parsed = acc["account"]["data"]["parsed"]
+                info = parsed.get("info", {})
                 mint = info.get("mint")
                 token_amount = info.get("tokenAmount", {})
                 amount = token_amount.get("uiAmount", 0)
-                decimals = token_amount.get("decimals", 9)
 
-                print(f"🔸 Token Mint: {mint} | Amount: {amount} | Decimals: {decimals}")
+                print(f"🔸 Token Mint: {mint} | Amount: {amount}")
 
                 if mint == WSOL_MINT:
                     print(f"✅ WSOL FOUND — adding {amount}")
