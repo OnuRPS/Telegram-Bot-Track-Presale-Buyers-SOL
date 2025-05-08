@@ -73,7 +73,7 @@ def send_telegram_message(text, gif_url=None):
             print(f"❌ Failed to send message to {chat_id}: {e}")
 
 def test_telegram_message():
-    print("🧪 Sending test message to Telegram...")
+    print("[TEST] Sending test message to Telegram...")
     text = (
         "✅ Bot started and connected successfully!\n\n"
         "🟢 Solana BuyDetector™ is live.\n"
