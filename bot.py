@@ -40,7 +40,7 @@ async def get_wallet_balance():
         resp = await client.get_token_accounts_by_owner(
             SolderPubkey.from_string(MONITORED_WALLET),
             "programId",
-            SolderPubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         )
 
         if not resp.value:
