@@ -51,19 +51,12 @@ async def get_wallet_balance():
 
         for acc in resp.value:
             try:
-                if not acc.account or not acc.account.data or not acc.account.data.parsed:
-                    print("⚠️ Skipping invalid token account (missing data)")
-                    continue
-
-                data = acc.account.data.parsed
-                if "info" not in data or "tokenAmount" not in data["info"]:
-                    print("⚠️ Skipping account with missing 'info' or 'tokenAmount'")
-                    continue
-
-                mint = data["info"]["mint"]
-                amount_info = data["info"]["tokenAmount"]
-                amount = amount_info["uiAmount"]
-                decimals = amount_info["decimals"]
+                account_data = acc["account"]["data"]["parsed"]
+                info = account_data.get("info", {})
+                mint = info.get("mint")
+                token_amount = info.get("tokenAmount", {})
+                amount = token_amount.get("uiAmount", 0)
+                decimals = token_amount.get("decimals", 9)
 
                 print(f"🔸 Token Mint: {mint} | Amount: {amount} | Decimals: {decimals}")
 
@@ -71,14 +64,14 @@ async def get_wallet_balance():
                     print(f"✅ WSOL FOUND — adding {amount}")
                     sol_total += amount
             except Exception as inner_e:
-                print(f"⚠️ Error while parsing one token account: {inner_e}")
+                print(f"⚠️ Error parsing token account: {inner_e}")
 
         print(f"💰 Final WSOL Total: {sol_total}")
         await client.close()
         return sol_total
 
     except Exception as e:
-        print(f"❌ Full WSOL balance check failed: {e}")
+        print(f"❌ WSOL balance failed: {e}")
         return 0.0
 
 def generate_bullets(sol_amount):
