@@ -2,6 +2,7 @@ import os
 import asyncio
 import aiohttp
 import json
+import base64
 from telegram import Bot
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
@@ -33,16 +34,19 @@ async def get_sol_price():
 async def get_wallet_balance():
     try:
         client = AsyncClient(SOLANA_RPC)
-        resp = await client.get_token_accounts_by_owner_json_parsed(
+        resp = await client.get_token_accounts_by_owner(
             owner=Pubkey.from_string(MONITORED_WALLET),
-            program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            mint=Pubkey.from_string(WSOL_MINT)
         )
+
         sol_total = 0.0
         for acc in resp.value:
-            data = acc.account.data.parsed
-            if data["info"]["mint"] == WSOL_MINT:
-                amount = data["info"]["tokenAmount"]["uiAmount"]
-                sol_total += amount
+            data = acc['account']['data'][0]  # base64 encoded string
+            decoded = base64.b64decode(data)
+            amount_bytes = decoded[64:72]
+            amount = int.from_bytes(amount_bytes, 'little') / 1e9
+            sol_total += amount
+
         await client.close()
         return sol_total
     except Exception as e:
