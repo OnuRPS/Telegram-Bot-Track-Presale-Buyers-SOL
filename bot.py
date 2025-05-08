@@ -36,9 +36,10 @@ async def get_wallet_balance():
         client = AsyncClient(SOLANA_RPC)
         print("🔍 Requesting all token accounts for owner...")
 
-        # fără niciun parametru suplimentar (doar owner)
+        # trebuie să trecem și opts, chiar dacă e None
         resp = await client.get_token_accounts_by_owner_json_parsed(
-            owner=Pubkey.from_string(MONITORED_WALLET)
+            owner=Pubkey.from_string(MONITORED_WALLET),
+            opts=None
         )
 
         if not resp.value:
