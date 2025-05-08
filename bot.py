@@ -33,17 +33,14 @@ async def get_sol_price():
 async def get_wallet_balance():
     try:
         client = AsyncClient(SOLANA_RPC)
-        wallet = Pubkey.from_string(MONITORED_WALLET)
-        program_id = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-
-        resp = await client.get_token_accounts_by_owner(wallet, program_id)
+        resp = await client.get_token_accounts_by_owner_json_parsed(
+            owner=Pubkey.from_string(MONITORED_WALLET),
+            mint=Pubkey.from_string(WSOL_MINT)
+        )
         sol_total = 0.0
-        for token_acc in resp.value:
-            info = token_acc.account.data.parsed["info"]
-            if info["mint"] == WSOL_MINT:
-                amount = float(info["tokenAmount"]["amount"]) / 1e9
-                sol_total += amount
-
+        for acc in resp.value:
+            amount = acc.account.data.parsed["info"]["tokenAmount"]["uiAmount"]
+            sol_total += amount
         await client.close()
         return sol_total
     except Exception as e:
