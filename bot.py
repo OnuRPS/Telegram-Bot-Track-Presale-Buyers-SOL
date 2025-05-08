@@ -34,28 +34,43 @@ async def get_sol_price():
 async def get_wallet_balance():
     try:
         client = AsyncClient(SOLANA_RPC)
-        print("🔍 Getting all SPL token accounts...")
+        print("🔍 Requesting all token accounts for owner...")
+
+        # fără niciun parametru suplimentar (doar owner)
         resp = await client.get_token_accounts_by_owner_json_parsed(
-            owner=Pubkey.from_string(MONITORED_WALLET),
-            program_id=Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            owner=Pubkey.from_string(MONITORED_WALLET)
         )
 
-        sol_total = 0.0
-        print(f"📦 Found {len(resp.value)} token accounts.")
-        for acc in resp.value:
-            data = acc.account.data.parsed
-            mint = data["info"]["mint"]
-            amount = data["info"]["tokenAmount"]["uiAmount"]
-            print(f"🔸 Token: {mint} | Amount: {amount}")
-            if mint == WSOL_MINT:
-                sol_total += amount
-                print(f"✅ Matched WSOL! Added {amount} to total.")
+        if not resp.value:
+            print("⚠️ No token accounts returned.")
+            await client.close()
+            return 0.0
 
+        sol_total = 0.0
+        print(f"📦 Found {len(resp.value)} token accounts. Checking for WSOL...")
+
+        for acc in resp.value:
+            try:
+                data = acc.account.data.parsed
+                mint = data["info"]["mint"]
+                amount_info = data["info"]["tokenAmount"]
+                amount = amount_info["uiAmount"]
+                decimals = amount_info["decimals"]
+
+                print(f"🔸 Token Mint: {mint} | Amount: {amount} | Decimals: {decimals}")
+
+                if mint == WSOL_MINT:
+                    print(f"✅ WSOL FOUND — adding {amount}")
+                    sol_total += amount
+            except Exception as inner_e:
+                print(f"⚠️ Error while parsing one token account: {inner_e}")
+
+        print(f"💰 Final WSOL Total: {sol_total}")
         await client.close()
-        print(f"💰 Total WSOL in wallet: {sol_total}")
         return sol_total
+
     except Exception as e:
-        print(f"⚠️ Error getting WSOL balance: {e}")
+        print(f"❌ Full WSOL balance check failed: {e}")
         return 0.0
 
 def generate_bullets(sol_amount):
