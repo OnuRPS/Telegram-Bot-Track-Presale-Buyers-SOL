@@ -1,6 +1,7 @@
 import os
 import asyncio
 import aiohttp
+import csv
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from telegram import Bot
@@ -10,12 +11,20 @@ from dotenv import load_dotenv
 load_dotenv()
 SOLANA_RPC = os.getenv("SOLANA_RPC")
 BABYGOV_MINT = "9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
+SUPPLY = 1_000_000_000
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
+bot = Bot(token=TELEGRAM_TOKEN)
 GIF_URL = "https://pandabao.org/wp-content/uploads/2025/05/babaygov.gif"
 
-bot = Bot(token=TELEGRAM_TOKEN)
+CSV_FILE = "babygov_buys.csv"
 trend_data = []
+
+# === INIT CSV ===
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, mode='w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Signature", "Buyer", "BabyGOV", "SOL", "USD_EST", "Rank"])
 
 def shorten_address(addr):
     return f"{addr[:6]}...{addr[-4:]}" if addr else "Unknown"
@@ -27,31 +36,52 @@ def mini_chart(amount):
         trend_data.pop(0)
     return "".join(["⬆️" if x > trend_data[i - 1] else "⬇️" for i, x in enumerate(trend_data) if i > 0])
 
-async def send_to_telegram(buyer, amount, sol_spent, signature):
+async def get_buyer_rank(mint, buyer):
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://public-api.solscan.io/token/holders?tokenAddress={mint}&limit=50"
+            async with session.get(url) as resp:
+                data = await resp.json()
+                for i, holder in enumerate(data.get("data", [])):
+                    if holder.get("owner") == buyer:
+                        return i + 1
+        return None
+    except Exception:
+        return None
+
+def log_to_csv(sig, buyer, amount, sol, usd, rank):
+    with open(CSV_FILE, mode='a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
+
+def send_to_telegram(buyer, amount, sol_spent, signature, rank):
     total_usd = round(sol_spent * 175.0, 2)
     trend = mini_chart(amount)
     msg = f"""
 🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
 
 🔀 {sol_spent:.6f} SOL (~${total_usd})
-🔀 {amount:,.2f} BabyGOV
+🔀 {amount:.2f} BabyGOV
+{f"🏅 Rank: #{rank}" if rank else "👤 New Wallet"}
+
 👤 {shorten_address(buyer)} (https://solscan.io/account/{buyer}) | [Txn](https://solscan.io/tx/{signature})
 
-🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
-📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE)
+🛒 Buy on Raydium (https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
+📈 Chart on DEXTools (https://www.dextools.io/app/en/solana/pair-explorer/6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE)
 
 🧠 Powered by @BabyGovBot
 """
+    print("[📤 Telegram] Trimit mesaj + GIF animat...")
     for chat_id in CHAT_IDS:
         try:
-            await bot.send_animation(
+            bot.send_animation(
                 chat_id=chat_id,
                 animation=GIF_URL,
                 caption=msg,
                 parse_mode="Markdown"
             )
         except Exception as e:
-            print(f"[❌ Telegram error în {chat_id}]: {e}")
+            print(f"[❌ Telegram error într {chat_id}]: {e}")
 
 async def fetch_tx_details(signature):
     async with aiohttp.ClientSession() as session:
@@ -67,18 +97,19 @@ async def fetch_tx_details(signature):
 async def monitor_babygov():
     client = AsyncClient(SOLANA_RPC)
     mint_pubkey = Pubkey.from_string(BABYGOV_MINT)
-    last_signature = None
+    seen_signatures = set()
 
     print("🟢 Monitorizare activă pe BabyGOV/SOL (numai swap-uri reale)...")
 
     while True:
         try:
-            resp = await client.get_signatures_for_address(mint_pubkey, limit=5)
+            resp = await client.get_signatures_for_address(mint_pubkey, limit=10)
             txs = resp.value
             for tx in txs:
                 sig = str(tx.signature)
-                if sig == last_signature:
-                    break
+                if sig in seen_signatures:
+                    continue
+                seen_signatures.add(sig)
 
                 print(f"🔍 Verific tranzacție nouă: {sig}")
                 tx_data = await fetch_tx_details(sig)
@@ -86,12 +117,6 @@ async def monitor_babygov():
                     continue
 
                 try:
-                    instructions = tx_data["transaction"]["message"]["instructions"]
-                    is_raydium = any("raydium" in str(ix.get("programId", "")).lower() or "swap" in str(ix).lower() for ix in instructions)
-                    if not is_raydium:
-                        print("⚠️ Tranzacție fără Raydium – ignorăm.")
-                        continue
-
                     meta = tx_data["meta"]
                     pre_token_balances = meta.get("preTokenBalances", [])
                     post_token_balances = meta.get("postTokenBalances", [])
@@ -128,13 +153,14 @@ async def monitor_babygov():
                                     sol_spent = diff / 1e9
                                     break
 
+                        rank = await get_buyer_rank(BABYGOV_MINT, buyer)
                         print(f"✅ Buy detectat: {received:.2f} BabyGOV cu {sol_spent:.6f} SOL")
-                        await send_to_telegram(buyer, received, sol_spent, sig)
+                        log_to_csv(sig, buyer, received, sol_spent, sol_spent * 175, rank)
+                        send_to_telegram(buyer, received, sol_spent, sig, rank)
 
                 except Exception as e:
                     print(f"[⚠️ Eroare analiză]: {e}")
 
-                last_signature = sig
             await asyncio.sleep(10)
         except Exception as e:
             print(f"[❌ Eroare RPC]: {e}")
