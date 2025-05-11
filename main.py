@@ -11,12 +11,10 @@ from dotenv import load_dotenv
 load_dotenv()
 SOLANA_RPC = os.getenv("SOLANA_RPC")
 BABYGOV_MINT = "9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
-RAYDIUM_PROGRAM_ID = "RVKd61ztZW9jqTc7Z98pSsv9rGzj2gEZ3tFj6x6tSds"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
 bot = Bot(token=TELEGRAM_TOKEN)
 GIF_URL = "https://pandabao.org/wp-content/uploads/2025/05/babaygov.gif"
-
 CSV_FILE = "babygov_buys.csv"
 trend_data = []
 
@@ -99,7 +97,7 @@ async def monitor_babygov():
     mint_pubkey = Pubkey.from_string(BABYGOV_MINT)
     last_signature = None
 
-    print("🟢 Monitorizare activă pe BabyGOV/SOL (numai swap-uri reale)...")
+    print("🟢 Monitorizare activă pe BabyGOV/SOL (fără filtru strict)...")
 
     while True:
         try:
@@ -113,15 +111,6 @@ async def monitor_babygov():
                 print(f"🔍 Verific tranzacție nouă: {sig}")
                 tx_data = await fetch_tx_details(sig)
                 if not tx_data:
-                    continue
-
-                try:
-                    instructions = tx_data["transaction"]["message"]["instructions"]
-                    if not any(ix.get("programId") == RAYDIUM_PROGRAM_ID for ix in instructions):
-                        print("⚠️ Tranzacție fără Raydium – ignorăm.")
-                        continue
-                except Exception:
-                    print("⚠️ Nu s-au putut analiza instructions – ignorăm.")
                     continue
 
                 try:
