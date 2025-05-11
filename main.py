@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv()
 SOLANA_RPC = os.getenv("SOLANA_RPC")
 BABYGOV_MINT = "9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
-SUPPLY = 1_000_000_000
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -57,7 +56,6 @@ def log_to_csv(sig, buyer, amount, sol, usd, rank):
 async def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
     total_usd = round(sol_spent * 175.0, 2)
     token_usd = round(amount * price, 6)
-    cap = round(price * SUPPLY)
     trend = mini_chart(amount)
     msg = f"""
 🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
@@ -65,7 +63,6 @@ async def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
 🔀 {sol_spent:.6f} SOL (~${total_usd})
 🔀 {amount:.2f} BabyGOV (~${token_usd})
 {f"🏅 Rank: #{rank}" if rank else "👤 New Wallet"}
-📊 Market Cap: ${cap:,}
 
 👤 {shorten_address(buyer)} (https://solscan.io/account/{buyer}) | [Txn](https://solscan.io/tx/{signature})
 
