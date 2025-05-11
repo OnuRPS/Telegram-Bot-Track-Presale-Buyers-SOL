@@ -2,8 +2,10 @@ import os
 import asyncio
 import aiohttp
 import csv
+import datetime
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
+from solders.signature import Signature
 from telegram import Bot
 from dotenv import load_dotenv
 
@@ -11,30 +13,32 @@ from dotenv import load_dotenv
 load_dotenv()
 SOLANA_RPC = os.getenv("SOLANA_RPC")
 BABYGOV_MINT = "9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
-SUPPLY = 1_000_000_000
+BABYGOV_LP = "6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
 bot = Bot(token=TELEGRAM_TOKEN)
 GIF_URL = "https://pandabao.org/wp-content/uploads/2025/05/babaygov.gif"
-
 CSV_FILE = "babygov_buys.csv"
+last_seen_sigs = set()
 trend_data = []
 
-# === INIT CSV ===
-if not os.path.exists(CSV_FILE):
-    with open(CSV_FILE, mode='w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["Signature", "Buyer", "BabyGOV", "SOL", "USD_EST", "Rank"])
-
-def shorten_address(addr):
-    return f"{addr[:6]}...{addr[-4:]}" if addr else "Unknown"
+# === UTILS ===
+def shorten(addr): return f"{addr[:6]}...{addr[-4:]}" if addr else "Unknown"
 
 def mini_chart(amount):
-    global trend_data
     trend_data.append(amount)
     if len(trend_data) > 5:
         trend_data.pop(0)
     return "".join(["⬆️" if x > trend_data[i - 1] else "⬇️" for i, x in enumerate(trend_data) if i > 0])
+
+def log_csv(sig, buyer, amount, sol, usd, rank):
+    if not os.path.exists(CSV_FILE):
+        with open(CSV_FILE, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Signature", "Buyer", "BabyGOV", "SOL", "USD", "Rank"])
+    with open(CSV_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
 
 async def get_buyer_rank(mint, buyer):
     try:
@@ -45,125 +49,107 @@ async def get_buyer_rank(mint, buyer):
                 for i, holder in enumerate(data.get("data", [])):
                     if holder.get("owner") == buyer:
                         return i + 1
-        return None
-    except Exception:
-        return None
+    except: pass
+    return None
 
-def log_to_csv(sig, buyer, amount, sol, usd, rank):
-    with open(CSV_FILE, mode='a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
-
-def send_to_telegram(buyer, amount, sol_spent, signature, rank):
-    total_usd = round(sol_spent * 175.0, 2)
+def send_telegram(buyer, amount, sol_spent, sig, rank):
+    usd = round(sol_spent * 175.0, 2)
+    if usd < 10:
+        return
     trend = mini_chart(amount)
-    msg = f"""
-🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
+    msg = f"""🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
 
-🔀 {sol_spent:.6f} SOL (~${total_usd})
-🔀 {amount:.2f} BabyGOV
-{f"🏅 Rank: #{rank}" if rank else "👤 New Wallet"}
+🔀 {sol_spent:.6f} SOL (~${usd})
+🔀 {amount:,.2f} BabyGOV
+{"🏅 Rank: #" + str(rank) if rank else "👤 New Wallet"}
 
-👤 {shorten_address(buyer)} (https://solscan.io/account/{buyer}) | [Txn](https://solscan.io/tx/{signature})
+👤 [{shorten(buyer)}](https://solscan.io/account/{buyer})
+🔗 [View Tx](https://solscan.io/tx/{sig})
 
-🛒 Buy on Raydium (https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
-📈 Chart on DEXTools (https://www.dextools.io/app/en/solana/pair-explorer/6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE)
+🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
+📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/{BABYGOV_LP})
 
-🧠 Powered by @BabyGovBot
-"""
-    print("[📤 Telegram] Trimit mesaj + GIF animat...")
+🧠 Powered by @BabyGovBot"""
     for chat_id in CHAT_IDS:
         try:
-            bot.send_animation(
-                chat_id=chat_id,
-                animation=GIF_URL,
-                caption=msg,
-                parse_mode="Markdown"
-            )
+            bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
         except Exception as e:
-            print(f"[❌ Telegram error într {chat_id}]: {e}")
+            print(f"[❌ Telegram Error] {e}")
 
-async def fetch_tx_details(signature):
+async def fetch_tx_details(sig):
+    await asyncio.sleep(0.3)
     async with aiohttp.ClientSession() as session:
         async with session.post(SOLANA_RPC, json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "getTransaction",
-            "params": [signature, {"encoding": "json", "maxSupportedTransactionVersion": 0}]
+            "jsonrpc": "2.0", "id": 1, "method": "getTransaction",
+            "params": [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
         }) as resp:
-            data = await resp.json()
-            return data.get("result")
+            return (await resp.json()).get("result")
 
+# === MONITORING LOOP ===
 async def monitor_babygov():
+    print("🟢 Monitorizare activă pe LP BabyGOV/SOL (Raydium pool)...")
     client = AsyncClient(SOLANA_RPC)
-    mint_pubkey = Pubkey.from_string(BABYGOV_MINT)
-    seen_signatures = set()
-
-    print("🟢 Monitorizare activă pe BabyGOV/SOL (numai swap-uri reale)...")
+    lp_pubkey = Pubkey.from_string(BABYGOV_LP)
 
     while True:
         try:
-            resp = await client.get_signatures_for_address(mint_pubkey, limit=10)
+            resp = await client.get_signatures_for_address(lp_pubkey, limit=15)
             txs = resp.value
-            for tx in txs:
+            for tx in reversed(txs):
                 sig = str(tx.signature)
-                if sig in seen_signatures:
+                if sig in last_seen_sigs:
                     continue
-                seen_signatures.add(sig)
+                last_seen_sigs.add(sig)
 
-                print(f"🔍 Verific tranzacție nouă: {sig}")
+                # verificăm doar tranzacțiile recente
+                if tx.block_time is None:
+                    continue
+                now = datetime.datetime.now(datetime.timezone.utc)
+                tx_time = datetime.datetime.fromtimestamp(tx.block_time, datetime.timezone.utc)
+                if (now - tx_time).total_seconds() > 600:
+                    continue
+
+                print(f"🔍 Procesare TX: {sig}")
                 tx_data = await fetch_tx_details(sig)
                 if not tx_data:
                     continue
 
                 try:
                     meta = tx_data["meta"]
-                    pre_token_balances = meta.get("preTokenBalances", [])
-                    post_token_balances = meta.get("postTokenBalances", [])
-                    pre_balances_sol = meta.get("preBalances", [])
-                    post_balances_sol = meta.get("postBalances", [])
-                    account_keys = tx_data["transaction"]["message"]["accountKeys"]
-
-                    received = 0
+                    pre = meta.get("preTokenBalances", [])
+                    post = meta.get("postTokenBalances", [])
                     buyer = None
-                    sol_spent = 0
-
-                    for pre, post in zip(pre_token_balances, post_token_balances):
-                        if post["mint"] == BABYGOV_MINT:
-                            pre_amt = float(pre.get("uiTokenAmount", {}).get("amount", 0))
-                            post_amt = float(post.get("uiTokenAmount", {}).get("amount", 0))
-                            decimals = int(post["uiTokenAmount"]["decimals"])
+                    received = 0
+                    for i in range(len(pre)):
+                        if post[i]["mint"] == BABYGOV_MINT:
+                            decimals = int(post[i]["uiTokenAmount"]["decimals"])
+                            pre_amt = float(pre[i]["uiTokenAmount"]["amount"])
+                            post_amt = float(post[i]["uiTokenAmount"]["amount"])
                             delta = (post_amt - pre_amt) / (10 ** decimals)
                             if delta > 0:
                                 received = delta
-                                buyer = post["owner"]
+                                buyer = post[i]["owner"]
+                                break
 
-                    if received > 0 and buyer:
-                        try:
-                            buyer_index = account_keys.index(buyer)
-                            if buyer_index < len(pre_balances_sol) and buyer_index < len(post_balances_sol):
-                                sol_spent = (pre_balances_sol[buyer_index] - post_balances_sol[buyer_index]) / 1e9
-                        except ValueError:
-                            pass
+                    if not buyer or received == 0:
+                        continue
 
-                        if sol_spent == 0:
-                            for i in range(len(pre_balances_sol)):
-                                diff = pre_balances_sol[i] - post_balances_sol[i]
-                                if diff > 0:
-                                    sol_spent = diff / 1e9
-                                    break
+                    pre_sol = meta.get("preBalances", [])
+                    post_sol = meta.get("postBalances", [])
+                    sol_spent = max([(pre_sol[i] - post_sol[i]) / 1e9 for i in range(min(len(pre_sol), len(post_sol))) if pre_sol[i] > post_sol[i]], default=0)
 
+                    usd = sol_spent * 175
+                    if usd >= 2:
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
-                        print(f"✅ Buy detectat: {received:.2f} BabyGOV cu {sol_spent:.6f} SOL")
-                        log_to_csv(sig, buyer, received, sol_spent, sol_spent * 175, rank)
-                        send_to_telegram(buyer, received, sol_spent, sig, rank)
-
+                        log_csv(sig, buyer, received, sol_spent, usd, rank)
+                        send_telegram(buyer, received, sol_spent, sig, rank)
+                    else:
+                        print(f"[SKIP] Sub 10$: {usd:.2f}")
                 except Exception as e:
-                    print(f"[⚠️ Eroare analiză]: {e}")
+                    print(f"[Eroare TX] {e}")
 
-            await asyncio.sleep(10)
         except Exception as e:
-            print(f"[❌ Eroare RPC]: {e}")
-            await asyncio.sleep(30)
+            print(f"[RPC ERROR] {e}")
+        await asyncio.sleep(4)
 
 asyncio.run(monitor_babygov())
