@@ -54,7 +54,7 @@ def log_to_csv(sig, buyer, amount, sol, usd, rank):
         writer = csv.writer(f)
         writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
 
-def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
+async def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
     total_usd = round(sol_spent * 175.0, 2)
     token_usd = round(amount * price, 6)
     cap = round(price * SUPPLY)
@@ -77,7 +77,7 @@ def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
     print("[📤 Telegram] Trimit mesaj + GIF animat...")
     for chat_id in CHAT_IDS:
         try:
-            bot.send_animation(
+            await bot.send_animation(
                 chat_id=chat_id,
                 animation=GIF_URL,
                 caption=msg,
@@ -159,7 +159,7 @@ async def monitor_babygov():
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
                         print(f"✅ Buy detectat: {received:.2f} BabyGOV cu {sol_spent:.6f} SOL")
                         log_to_csv(sig, buyer, received, sol_spent, sol_spent * 175, rank)
-                        send_to_telegram(buyer, received, sol_spent, token_price, sig, rank)
+                        await send_to_telegram(buyer, received, sol_spent, token_price, sig, rank)
 
                 except Exception as e:
                     print(f"[⚠️ Eroare analiză]: {e}")
