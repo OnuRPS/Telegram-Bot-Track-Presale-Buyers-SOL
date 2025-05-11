@@ -15,9 +15,11 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
 bot = Bot(token=TELEGRAM_TOKEN)
 GIF_URL = "https://pandabao.org/wp-content/uploads/2025/05/babaygov.gif"
+
 CSV_FILE = "babygov_buys.csv"
 trend_data = []
 
+# === INIT CSV ===
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, mode='w', newline='') as f:
         writer = csv.writer(f)
@@ -51,15 +53,14 @@ def log_to_csv(sig, buyer, amount, sol, usd, rank):
         writer = csv.writer(f)
         writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
 
-async def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
+async def send_to_telegram(buyer, amount, sol_spent, signature, rank):
     total_usd = round(sol_spent * 175.0, 2)
-    token_usd = round(amount * price, 6)
     trend = mini_chart(amount)
     msg = f"""
 🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
 
 🔀 {sol_spent:.6f} SOL (~${total_usd})
-🔀 {amount:.2f} BabyGOV (~${token_usd})
+🔀 {amount:,.2f} BabyGOV
 {f"🏅 Rank: #{rank}" if rank else "👤 New Wallet"}
 
 👤 {shorten_address(buyer)} (https://solscan.io/account/{buyer}) | [Txn](https://solscan.io/tx/{signature})
@@ -67,7 +68,7 @@ async def send_to_telegram(buyer, amount, sol_spent, price, signature, rank):
 🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
 📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE)
 
-🧠 Powered by @BabyGovBot
+🧐 Powered by @BabyGovBot
 """
     print("[📤 Telegram] Trimit mesaj + GIF animat...")
     for chat_id in CHAT_IDS:
@@ -97,7 +98,7 @@ async def monitor_babygov():
     mint_pubkey = Pubkey.from_string(BABYGOV_MINT)
     last_signature = None
 
-    print("🟢 Monitorizare activă pe BabyGOV/SOL (fără filtru strict)...")
+    print("🟢 Monitorizare activă pe BabyGOV/SOL (numai swap-uri reale)...")
 
     while True:
         try:
@@ -150,11 +151,10 @@ async def monitor_babygov():
                                     sol_spent = diff / 1e9
                                     break
 
-                        token_price = sol_spent / received if received > 0 else 0.0001
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
                         print(f"✅ Buy detectat: {received:.2f} BabyGOV cu {sol_spent:.6f} SOL")
                         log_to_csv(sig, buyer, received, sol_spent, sol_spent * 175, rank)
-                        await send_to_telegram(buyer, received, sol_spent, token_price, sig, rank)
+                        await send_to_telegram(buyer, received, sol_spent, sig, rank)
 
                 except Exception as e:
                     print(f"[⚠️ Eroare analiză]: {e}")
