@@ -44,32 +44,6 @@ def log_csv(sig, buyer, amount, sol, usd, rank):
         writer = csv.writer(f)
         writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
 
-def send_telegram_sync(buyer, amount, sol_spent, sig, rank):
-    usd = round(sol_spent * 175.0, 2)
-    if usd < 10:
-        print(f"[SKIP] Sub 10$: {usd:.2f}")
-        return
-
-    trend = mini_chart(amount)
-    msg = f"""🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
-
-🔀 {sol_spent:.6f} SOL (~${usd})
-🔀 {amount:,.2f} BabyGOV
-{"\ud83c\udfc5 Rank: #" + str(rank) if rank else "🕤 New Wallet"}
-
-🕤 [{shorten(buyer)}](https://solscan.io/account/{buyer})
-🔗 [View Tx](https://solscan.io/tx/{sig})
-
-🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
-📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/{BABYGOV_LP})
-
-🧐 Powered by @BabyGovBot"""
-    for chat_id in CHAT_IDS:
-        try:
-            bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
-        except Exception as e:
-            print(f"[\u274c Telegram Error] {e}")
-
 async def get_buyer_rank(mint, buyer):
     try:
         async with aiohttp.ClientSession() as session:
@@ -84,6 +58,33 @@ async def get_buyer_rank(mint, buyer):
         print(f"[RANK ERROR] {e}")
     return None
 
+async def send_telegram(buyer, amount, sol_spent, sig, rank):
+    usd = round(sol_spent * 175.0, 2)
+    if usd < 10:
+        print(f"[SKIP] Sub 10$: {usd:.2f}")
+        return
+
+    trend = mini_chart(amount)
+    msg = f"""🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
+
+🔀 {sol_spent:.6f} SOL (~${usd})
+🔀 {amount:,.2f} BabyGOV
+{"🏅 Rank: #" + str(rank) if rank else "👤 New Wallet"}
+
+👤 [{shorten(buyer)}](https://solscan.io/account/{buyer})
+🔗 [View Tx](https://solscan.io/tx/{sig})
+
+🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
+📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/{BABYGOV_LP})
+
+🧐 Powered by @BabyGovBot"""
+
+    for chat_id in CHAT_IDS:
+        try:
+            await bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
+        except Exception as e:
+            print(f"[❌ Telegram Error] {e}")
+
 async def fetch_tx_details(sig):
     await asyncio.sleep(0.3)
     async with aiohttp.ClientSession() as session:
@@ -93,6 +94,7 @@ async def fetch_tx_details(sig):
         }) as resp:
             return (await resp.json()).get("result")
 
+# === MONITORING LOOP ===
 async def monitor_babygov():
     print("🟢 Monitorizare activă pe LP BabyGOV/SOL (Raydium pool)...")
     client = AsyncClient(SOLANA_RPC)
@@ -150,7 +152,7 @@ async def monitor_babygov():
                     if usd >= 2:
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
                         log_csv(sig, buyer, received, sol_spent, usd, rank)
-                        send_telegram_sync(buyer, received, sol_spent, sig, rank)
+                        await send_telegram(buyer, received, sol_spent, sig, rank)
                     else:
                         print(f"[SKIP] Sub 10$: {usd:.2f}")
                 except Exception as e:
