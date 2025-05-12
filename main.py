@@ -3,11 +3,14 @@ import asyncio
 import aiohttp
 import csv
 import datetime
+import warnings
 from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from telegram import Bot
 from dotenv import load_dotenv
+
+warnings.simplefilter("always", RuntimeWarning)
 
 # === CONFIG ===
 load_dotenv()
@@ -23,7 +26,8 @@ last_seen_sigs = set()
 trend_data = []
 
 # === UTILS ===
-def shorten(addr): return f"{addr[:6]}...{addr[-4:]}" if addr else "Unknown"
+def shorten(addr):
+    return f"{addr[:6]}...{addr[-4:]}" if addr else "Unknown"
 
 def mini_chart(amount):
     trend_data.append(amount)
@@ -43,19 +47,23 @@ def log_csv(sig, buyer, amount, sol, usd, rank):
 async def get_buyer_rank(mint, buyer):
     try:
         async with aiohttp.ClientSession() as session:
-            url = f"https://public-api.solscan.io/token/holders?tokenAddress={mint}&limit=50"
-            async with session.get(url) as resp:
+            url = f"https://pro-api.solscan.io/v1.0/token/holders?tokenAddress={mint}&limit=50"
+            headers = {"Authorization": f"Bearer {os.getenv('SOLSCAN_API_KEY')}"}
+            async with session.get(url, headers=headers) as resp:
                 data = await resp.json()
                 for i, holder in enumerate(data.get("data", [])):
                     if holder.get("owner") == buyer:
                         return i + 1
-    except: pass
+    except Exception as e:
+        print(f"[RANK ERROR] {e}")
     return None
 
-def send_telegram(buyer, amount, sol_spent, sig, rank):
+async def send_telegram(buyer, amount, sol_spent, sig, rank):
     usd = round(sol_spent * 175.0, 2)
     if usd < 10:
+        print(f"[SKIP] Sub 10$: {usd:.2f}")
         return
+
     trend = mini_chart(amount)
     msg = f"""🟢 BabyGOV Buy Detected (BabyGOV/SOL) {trend}
 
@@ -69,10 +77,11 @@ def send_telegram(buyer, amount, sol_spent, sig, rank):
 🛒 [Buy on Raydium](https://raydium.io/swap/?inputMint={BABYGOV_MINT}&outputMint=sol)
 📈 [Chart on DEXTools](https://www.dextools.io/app/en/solana/pair-explorer/{BABYGOV_LP})
 
-🧠 Powered by @BabyGovBot"""
+🧐 Powered by @BabyGovBot"""
+
     for chat_id in CHAT_IDS:
         try:
-            bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
+            await bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
         except Exception as e:
             print(f"[❌ Telegram Error] {e}")
 
@@ -101,12 +110,13 @@ async def monitor_babygov():
                     continue
                 last_seen_sigs.add(sig)
 
-                # verificăm doar tranzacțiile recente
                 if tx.block_time is None:
                     continue
                 now = datetime.datetime.now(datetime.timezone.utc)
                 tx_time = datetime.datetime.fromtimestamp(tx.block_time, datetime.timezone.utc)
-                if (now - tx_time).total_seconds() > 600:
+                age = (now - tx_time).total_seconds()
+                if age > 600:
+                    print(f"[SKIP] Tranzacție prea veche: {tx_time} (age {int(age)}s)")
                     continue
 
                 print(f"🔍 Procesare TX: {sig}")
@@ -142,7 +152,7 @@ async def monitor_babygov():
                     if usd >= 2:
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
                         log_csv(sig, buyer, received, sol_spent, usd, rank)
-                        send_telegram(buyer, received, sol_spent, sig, rank)
+                        await send_telegram(buyer, received, sol_spent, sig, rank)
                     else:
                         print(f"[SKIP] Sub 10$: {usd:.2f}")
                 except Exception as e:
