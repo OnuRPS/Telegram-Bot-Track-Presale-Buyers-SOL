@@ -44,6 +44,19 @@ def log_csv(sig, buyer, amount, sol, usd, rank):
         writer = csv.writer(f)
         writer.writerow([sig, buyer, round(amount, 4), round(sol, 6), round(usd, 2), rank or "New Wallet"])
 
+async def get_babygov_price_and_marketcap():
+    url = "https://api.coingecko.com/api/v3/coins/solana/contract/9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                data = await resp.json()
+                price = data["market_data"]["current_price"]["usd"]
+                marketcap = data["market_data"]["market_cap"]["usd"]
+                return round(price, 8), round(marketcap)
+    except Exception as e:
+        print(f"[❌ CoinGecko API error] {e}")
+        return None, None
+
 async def get_buyer_rank(mint, buyer):
     try:
         async with aiohttp.ClientSession() as session:
@@ -59,7 +72,8 @@ async def get_buyer_rank(mint, buyer):
     return None
 
 async def send_telegram(buyer, amount, sol_spent, sig, rank):
-    usd = round(sol_spent * 175.0, 2)
+    price, marketcap = await get_babygov_price_and_marketcap()
+    usd = round(sol_spent * price, 2) if price else round(sol_spent * 175, 2)
     if usd < 10:
         print(f"[SKIP] Sub 10$: {usd:.2f}")
         return
@@ -70,6 +84,7 @@ async def send_telegram(buyer, amount, sol_spent, sig, rank):
 🔀 {sol_spent:.6f} SOL (~${usd})
 🔀 {amount:,.2f} BabyGOV
 {"🏅 Rank: #" + str(rank) if rank else "👤 New Wallet"}
+💰 Market Cap: ${marketcap:,} (CoinGecko)
 
 👤 [{shorten(buyer)}](https://solscan.io/account/{buyer})
 🔗 [View Tx](https://solscan.io/tx/{sig})
@@ -130,6 +145,8 @@ async def monitor_babygov():
                     post = meta.get("postTokenBalances", [])
                     buyer = None
                     received = 0
+                    decimals = 0
+
                     for i in range(len(pre)):
                         if post[i]["mint"] == BABYGOV_MINT:
                             decimals = int(post[i]["uiTokenAmount"]["decimals"])
@@ -146,13 +163,21 @@ async def monitor_babygov():
 
                     pre_sol = meta.get("preBalances", [])
                     post_sol = meta.get("postBalances", [])
-                    sol_spent = max([(pre_sol[i] - post_sol[i]) / 1e9 for i in range(min(len(pre_sol), len(post_sol))) if pre_sol[i] > post_sol[i]], default=0)
+                    accounts = tx_data["transaction"]["message"]["accountKeys"]
 
-                    usd = sol_spent * 175
-                    if usd >= 2:
+                    buyer_sol_spent = 0
+                    for i in range(min(len(pre_sol), len(post_sol))):
+                        acc = accounts[i]["pubkey"]
+                        if acc == buyer and pre_sol[i] > post_sol[i]:
+                            buyer_sol_spent = (pre_sol[i] - post_sol[i]) / 1e9
+                            break
+
+                    price, _ = await get_babygov_price_and_marketcap()
+                    usd = buyer_sol_spent * price if price else buyer_sol_spent * 175
+                    if usd >= 10:
                         rank = await get_buyer_rank(BABYGOV_MINT, buyer)
-                        log_csv(sig, buyer, received, sol_spent, usd, rank)
-                        await send_telegram(buyer, received, sol_spent, sig, rank)
+                        log_csv(sig, buyer, received, buyer_sol_spent, usd, rank)
+                        await send_telegram(buyer, received, buyer_sol_spent, sig, rank)
                     else:
                         print(f"[SKIP] Sub 10$: {usd:.2f}")
                 except Exception as e:
@@ -162,4 +187,5 @@ async def monitor_babygov():
             print(f"[RPC ERROR] {e}")
         await asyncio.sleep(4)
 
-asyncio.run(monitor_babygov())
+if __name__ == "__main__":
+    asyncio.run(monitor_babygov())
