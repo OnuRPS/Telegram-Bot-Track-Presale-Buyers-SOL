@@ -8,8 +8,6 @@ from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from telegram import Bot
-from telegram.constants import ParseMode
-from telegram.request import AiohttpRequest
 from dotenv import load_dotenv
 
 warnings.simplefilter("always", RuntimeWarning)
@@ -21,14 +19,11 @@ BABYGOV_MINT = "9wSAERFBoG2S7Hwa1xq64h2S6tZCR5KoTXBS1pwep7Gf"
 BABYGOV_LP = "6Ch1KUEDm8i8JcSCTnAUS72FC7FJzWuKZYEqZ5Pe67KE"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_IDS = [int(x) for x in os.getenv("CHAT_IDS", "").split(",") if x]
+bot = Bot(token=TELEGRAM_TOKEN)
 GIF_URL = "https://pandabao.org/wp-content/uploads/2025/05/babaygov.gif"
 CSV_FILE = "babygov_buys.csv"
 last_seen_sigs = set()
 trend_data = []
-
-# === BOT INIT (ASYNC) ===
-request = AiohttpRequest()
-bot = Bot(token=TELEGRAM_TOKEN, request=request)
 
 # === UTILS ===
 def shorten(addr):
@@ -86,7 +81,7 @@ async def send_telegram(buyer, amount, sol_spent, sig, rank):
 
     for chat_id in CHAT_IDS:
         try:
-            await bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode=ParseMode.MARKDOWN)
+            await bot.send_animation(chat_id=chat_id, animation=GIF_URL, caption=msg, parse_mode="Markdown")
         except Exception as e:
             print(f"[❌ Telegram Error] {e}")
 
