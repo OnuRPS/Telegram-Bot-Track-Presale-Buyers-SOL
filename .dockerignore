@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+.env
+sessions/*.session-journal
+sessions/*.session-shm
+sessions/*.session-wal
